@@ -49,6 +49,7 @@ $acfService = new NativeAcfService();
  */
 \Municipio\Helper\AcfService::set($acfService);
 \Municipio\Helper\WpService::set($wpService);
+\Municipio\SchemaData\Helper\GetSchemaType::setAcfService($acfService);
 
 /**
  * Acf auto import and export
@@ -119,7 +120,8 @@ add_action('init', function () use ($wpService) {
         'navigation-widget'                          => 'group_5ae64000dd723',
         'widget-media'                               => 'group_5b2b70c0bde2f',
         'media-attachments'                          => 'group_650857c9f2cce',
-        'hidden-validation'                          => 'group_654a2a57e6897'
+        'hidden-validation'                          => 'group_654a2a57e6897',
+        'additional-menu-settings'                   => 'group_66e05ac66c932'
     ));
 
     $acfExportManager->autoExport($autoExportIds);
