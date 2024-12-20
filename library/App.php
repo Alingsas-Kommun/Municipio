@@ -10,6 +10,8 @@ use Municipio\Api\RestApiEndpointsRegistry;
 use Municipio\BrandedEmails\ApplyMailHtmlTemplate;
 use Municipio\BrandedEmails\HtmlTemplate\Config\HtmlTemplateConfigService;
 use Municipio\BrandedEmails\HtmlTemplate\DefaultHtmlTemplate;
+use Municipio\Comment\OptionalDisableDiscussionFeature;
+use Municipio\Comment\OptionalHideDiscussionWhenLoggedOut;
 use Municipio\Config\Features\SchemaData\SchemaDataConfigInterface;
 use Municipio\Content\ResourceFromApi\Api\ResourceFromApiRestController;
 use Municipio\Content\ResourceFromApi\Modifiers\HooksAdder;
@@ -53,6 +55,8 @@ use WP_Post;
 use WpCronService\WpCronJobManager;
 use wpdb;
 use WpService\WpService;
+use Municipio\Admin\Login\EnqueueStyles;
+use Municipio\Admin\Login\ChangeLogotypeData;
 
 /**
  * Class App
@@ -217,13 +221,14 @@ class App
         new \Municipio\Comment\Likes();
         new \Municipio\Comment\Filters();
         new \Municipio\Comment\Form();
+        $this->hooksRegistrar->register(new OptionalDisableDiscussionFeature($this->wpService, $this->acfService));
+        $this->hooksRegistrar->register(new OptionalHideDiscussionWhenLoggedOut($this->wpService, $this->acfService));
 
         /**
          * Admin
          */
         new \Municipio\Admin\Gutenberg\Gutenberg();
         new \Municipio\Admin\General();
-        new \Municipio\Admin\LoginTracking();
 
         new \Municipio\Admin\Gutenberg\Blocks\BlockManager();
 
@@ -233,10 +238,10 @@ class App
         new \Municipio\Admin\Options\ContentEditor();
         new \Municipio\Admin\Options\AttachmentConsent();
 
-        new \Municipio\Admin\Acf\PrefillIconChoice();
+        new \Municipio\Admin\Acf\PrefillIconChoice($this->wpService);
         new \Municipio\Admin\Acf\ImageAltTextValidation();
 
-        new \Municipio\Admin\Roles\General();
+        new \Municipio\Admin\Roles\General($this->wpService);
         new \Municipio\Admin\Roles\Editor();
 
         new \Municipio\Admin\UI\BackEnd();
@@ -245,6 +250,11 @@ class App
 
         new \Municipio\Admin\TinyMce\LoadPlugins();
 
+        /* Integration: MiniOrange */
+        $moveAdminPageToSettings = new \Municipio\Admin\Integrations\MiniOrange\MoveAdminPageToSettings($this->wpService);
+        $this->hooksRegistrar->register($moveAdminPageToSettings);
+
+        /* Admin uploads */
         $uploads = new \Municipio\Admin\Uploads();
         $uploads->addHooks();
 
@@ -263,7 +273,7 @@ class App
         /**
          * Customizer
          */
-        new \Municipio\Customizer();
+        new \Municipio\Customizer($this->wpService, $this->wpdb);
 
         /**
          * Block customizations
@@ -296,7 +306,111 @@ class App
          */
         $this->setupImageConvert();
 
-        new \Municipio\Helper\Navigation\MenusSettings($this->wpService, $this->acfService);
+        /**
+         * Component Context filters
+         */
+        $this->setupComponentContextFilters();
+
+        /**
+         * Login screen
+         */
+        $this->setupLoginLogout();
+
+        /**
+         * MiniOrange integration
+         */
+        $this->setUpMiniOrangeIntegration();
+
+        /**
+         * Broken links
+         */
+        $this->setUpBrokenLinksIntegration();
+    }
+
+    /**
+     * Sets up the broken links integration.
+     *
+     * This method initializes the broken links integration by creating an instance of the
+     * RedirectToLoginWhenInternalContext class and passing the WordPress service instance.
+     *
+     * @return void
+     */
+
+    private function setUpBrokenLinksIntegration(): void
+    {
+        $config = new \Municipio\Integrations\BrokenLinks\Config\BrokenLinksConfig();
+        if ($config->isEnabled() === false) {
+            return;
+        }
+
+        $redirect = new \Municipio\Integrations\BrokenLinks\RedirectToLoginWhenInternalContext($this->wpService, $config);
+        $redirect->addHooks();
+    }
+
+    /**
+     * Set up the custom login screen.
+     *
+     * This method is responsible to apply design changes to the login screen.
+     *
+     * @return void
+     */
+    private function setupLoginLogout(): void
+    {
+        $filterAuthUrls = new \Municipio\Admin\Login\RelationalLoginLogourUrls($this->wpService);
+        $filterAuthUrls->addHooks();
+
+        $addLoginAndLogoutNotices = new \Municipio\Admin\Login\AddLoginAndLogoutNotices($this->wpService);
+        $addLoginAndLogoutNotices->addHooks();
+
+        $logUserLoginTime = new \Municipio\Admin\Login\LogUserLoginTime($this->wpService);
+        $logUserLoginTime->addHooks();
+
+        $registerLoginLogoutOptionsPage = new \Municipio\Admin\Login\RegisterLoginLogoutOptionsPage($this->wpService, $this->acfService);
+        $registerLoginLogoutOptionsPage->addHooks();
+
+        $enqueueLoginScreenStyles = new \Municipio\Admin\Login\EnqueueLoginScreenStyles($this->wpService);
+        $enqueueLoginScreenStyles->addHooks();
+
+        $setLoginScreenLogotypeData = new \Municipio\Admin\Login\SetLoginScreenLogotypeData($this->wpService);
+        $setLoginScreenLogotypeData->addHooks();
+
+        $doNotHaltAuthWhenNonceIsMissing = new \Municipio\Admin\Login\DoNotHaltAuthWhenNonceIsMissing($this->wpService);
+        $doNotHaltAuthWhenNonceIsMissing->addHooks();
+    }
+
+    /**
+     * Set up the MiniOrange integration.
+     *
+     * This method is responsible for setting up the MiniOrange integration.
+     *
+     * @return void
+     */
+    private function setUpMiniOrangeIntegration(): void
+    {
+        $config = new \Municipio\Admin\Integrations\MiniOrange\Config\MiniOrangeConfig();
+        if ($config->isEnabled() === false) {
+            return;
+        }
+
+        $requireSsoLogin = new \Municipio\Admin\Integrations\MiniOrange\RequireSsoLogin($this->wpService, $config);
+        $requireSsoLogin->addHooks();
+    }
+
+    /**
+     * Sets up the component context filters.
+     *
+     * This method initializes the component context filters by creating instances of the
+     * CurrentSidebar and CompressedCollections classes and passing the WordPress service instance.
+     *
+     * @return void
+     */
+    private function setupComponentContextFilters(): void
+    {
+        $currentSidebar = new \Municipio\Integrations\Component\ContextFilters\Sidebar\CurrentSidebar($this->wpService);
+        $currentSidebar->addHooks();
+
+        $compressedCollections = new \Municipio\Integrations\Component\ContextFilters\Sidebar\CompressedCollections($this->wpService, $currentSidebar);
+        $compressedCollections->addHooks();
     }
 
     /**
@@ -436,10 +550,6 @@ class App
             ]);
         });
 
-        if (!$this->schemaDataConfig->featureIsEnabled()) {
-            return;
-        }
-
         $getEnabledSchemaTypes             = new GetEnabledSchemaTypes($this->wpService);
         $schemaPropSanitizer               = new NullSanitizer();
         $schemaPropSanitizer               = new StringSanitizer($schemaPropSanitizer);
@@ -550,10 +660,6 @@ class App
          */
         $sourceConfigs = (new ConfigSourceConfigFactory($this->schemaDataConfig, $this->wpService))->create();
 
-        if (!$this->schemaDataConfig->featureIsEnabled()) {
-            return;
-        }
-
         /**
          * Register taxonomies for external content.
          * @var TaxonomyItem[] $taxonomyItems
@@ -563,9 +669,7 @@ class App
                 $taxonomyItem = new TaxonomyItem(
                     $config->getSchemaType(),
                     [$config->getPostType()],
-                    $taxonomyConfig->getFromSchemaProperty(),
-                    $taxonomyConfig->getSingularName(),
-                    $taxonomyConfig->getName(),
+                    $taxonomyConfig,
                     $this->wpService
                 );
                 $taxonomyItem->register(); // Register the taxonomy.

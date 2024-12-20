@@ -6,6 +6,7 @@ use WpService\WpService;
 use AcfService\AcfService;
 use Municipio\Helper\FormatObject;
 use Municipio\Helper\TranslatedLabels;
+use Municipio\Helper\Color;
 // Menu
 use Municipio\Controller\Navigation\Config\MenuConfig;
 use Municipio\Controller\Navigation\MenuBuilderInterface;
@@ -21,7 +22,7 @@ class BaseController
      * Holds the view's data
      * @var array
      */
-    protected $data = [];
+    public $data = [];
 
     /**
      * WordPress Global states
@@ -124,18 +125,12 @@ class BaseController
             }
         }
 
+        //User login logout
+        $this->data['loginLogoutHasBackgroundColor'] = $this->checkHeaderLoginLogoutHasBackgroundColor();
+
         $this->data['headerData'] = isset($headerController) ? $headerController->getHeaderData() : [];
 
         $this->menuDirector->setBuilder($this->menuBuilder);
-
-        // All menu settings should be stored in the nav_menus_settings option
-        $menuSettings                        = $this->wpService->getOption('nav_menus_settings', []);
-        $this->data['additionalMenusOption'] = $menuSettings['additional_menus'] ?? [];
-
-        // Building additional menus in use
-        $this->data['additionalMenus'] = $this->buildAdditionalMenus();
-
-
 
         // Accessibility menu
         $accessibilityMenuConfig = new MenuConfig(
@@ -183,7 +178,7 @@ class BaseController
 
         $this->menuBuilder->setConfig($primaryMenuConfig);
         $primaryMenuConfig->getFallbackToPageTree() ?
-            $this->menuDirector->buildMixedPageTreeMenu() :
+            $this->menuDirector->buildStandardWithPageTreeFallbackMenu() :
             $this->menuDirector->buildStandardMenu();
         $this->data['primaryMenu'] = $this->menuBuilder->getMenu()->getMenu();
 
@@ -334,7 +329,15 @@ class BaseController
         $this->data['timeFormat']     = \Municipio\Helper\DateFormat::getDateFormat('time');
 
         //User is authenticated
-        $this->data['isAuthenticated'] = is_user_logged_in();
+        $this->data['user']              = $this->wpService->wpGetCurrentUser();
+        $this->data['isAuthenticated']   = $this->wpService->isUserLoggedIn();
+        $this->data['isAdminBarShowing'] = $this->wpService->isAdminBarShowing();
+        $this->data['loginUrl']          = $this->wpService->wpLoginUrl(
+            $this->getCurrentUrl(['loggedin' => 'true'])
+        );
+        $this->data['logoutUrl']         = $this->wpService->wpLogoutUrl(
+            $this->getCurrentUrl(['loggedout' => 'true'])
+        );
 
         //User role
         $this->data['userRole'] = $this->getUserRole();  //TODO: MOVE TO USER HELPER CLASS
@@ -365,6 +368,7 @@ class BaseController
         $this->data['hasMainMenu']           = $this->hasMainMenu();
 
         $this->data['structuredData'] = \Municipio\Helper\Data::normalizeStructuredData([]);
+
         //Notice storage
         $this->data['notice'] = [];
 
@@ -380,7 +384,10 @@ class BaseController
             [
                 'searchFor' => ucfirst(strtolower($this->data['postTypeDetails']->labels->search_items ?? __('Search for content', 'municipio'))),
                 'noResult'  => $this->data['postTypeDetails']->labels->not_found ?? __('No items found at this query.', 'municipio'),
-                ]
+                'logout'    => __('Logout', 'municipio'),
+                'login'     => __('Login', 'municipio'),
+                'close'     => __('Close', 'municipio'),
+            ]
         );
 
             $this->data['labels'] = (array) $this->data['lang'];
@@ -430,42 +437,40 @@ class BaseController
     }
 
     /**
-     * Builds additional menus based on the provided options.
+     * Get the current URL with optional query parameters.
      *
-     * @return array The array of additional menus.
+     * @param array $queryParam Key-value pairs to add or override in the query string.
+     * @return string The full URL.
      */
-    private function buildAdditionalMenus(): array
+    private function getCurrentUrl(array $queryParam = []): string
     {
-        $additionalMenus       = [];
-        $additionalMenusOption = $this->data['additionalMenusOption'];
+        $permalink = urldecode($this->wpService->getPermalink(\Municipio\Helper\CurrentPostId::get()));
+        $permalink = add_query_arg($queryParam, $permalink);
+        return urldecode($permalink);
+    }
 
-        if (empty($additionalMenusOption)) {
-            return $additionalMenus;
+    /**
+     * Check if the login/logout button has a background color
+     *
+     * @return bool
+     */
+    private function checkHeaderLoginLogoutHasBackgroundColor()
+    {
+        $customizer = $this->data['customizer'];
+
+        if (empty($customizer->headerLoginLogoutBackgroundColor)) {
+            return false;
         }
 
-        foreach ($additionalMenusOption as $key => $additionalMenuIds) {
-            if (empty($additionalMenuIds)) {
-                continue;
-            }
+        $colorValues = explode(",", $customizer->headerLoginLogoutBackgroundColor);
 
-
-            foreach ($additionalMenuIds as $menuId) {
-                if (empty($menuId) || !is_numeric($menuId) || array_key_exists($menuId, $additionalMenus)) {
-                    continue;
-                }
-
-                $menuConfig = new MenuConfig(
-                    'additional-menu',
-                    (int) $menuId
-                );
-
-                $this->menuBuilder->setConfig($menuConfig);
-                $this->menuDirector->buildStandardMenuWithPageTreeSubitems();
-                $additionalMenus[$menuId] = $this->menuBuilder->getMenu()->getMenu();
-            }
+        if (!isset($colorValues[3])) {
+            return false;
         }
 
-        return $additionalMenus;
+        $alpha = preg_replace('/[^0-9.]/', '', $colorValues[3]);
+
+        return !empty($alpha);
     }
 
     /**
@@ -753,65 +758,42 @@ class BaseController
      */
     protected function showSearchForm($location = null)
     {
-        if (!isset($this->data['customizer']->searchDisplay)) {
-            return true;
+        $customizer       = $this->data['customizer'] ?? null;
+        $enabledLocations = $customizer->searchDisplay ?? null;
+
+        // Return true if no customizer data exists
+        if (is_null($customizer) || empty($enabledLocations)) {
+            return false;
         }
 
-        $enabledLocations = $this->data['customizer']->searchDisplay;
+        switch ($location) {
+            case 'hero':
+                return is_front_page() && in_array($location, $enabledLocations);
 
-        if ($location == "hero" && is_front_page()) {
-            return in_array($location, $enabledLocations);
-        }
+            case 'mobile-drawer':
+            case 'mobile':
+                return in_array('mobile', $enabledLocations);
 
-        if ($location == "mobile") {
-            //Do not show on frontpage, if hero search is active
-            if (!in_array("hero", $enabledLocations) && is_front_page()) {
-                return true;
-            }
+            case 'header':
+                if (is_search()) {
+                    return false;
+                }
+                return is_front_page()
+                    ? in_array('header', $enabledLocations)
+                    : in_array('header_sub', $enabledLocations);
 
-            //Show if not frontpage, not search and search is enabled anywhere else.
-            if (!is_front_page() && !is_search() && !empty($enabledLocations)) {
-                return true;
-            }
-        }
+            case 'navigation':
+                return !is_search() && in_array('mainmenu', $enabledLocations);
 
-        if ($location == "mobile-drawer" && $this->data['customizer']->headerApperance !== 'business') {
-            if ($this->showSearchForm('mobile')) {
-                return true;
-            }
-        }
+            case 'mega-menu':
+                return in_array('mega_menu', $enabledLocations);
 
-        if ($location == "header") {
-            if (is_search()) {
+            case 'quicklinks':
+                return in_array('quicklinks', $enabledLocations);
+
+            default:
                 return false;
-            }
-
-            if (is_front_page()) {
-                return in_array('header', $enabledLocations);
-            }
-
-            if (!is_front_page()) {
-                return in_array('header_sub', $enabledLocations);
-            }
         }
-
-        if ($location == "navigation") {
-            if (is_search()) {
-                return false;
-            }
-
-            return in_array('mainmenu', $enabledLocations);
-        }
-
-        if ($location == "mega-menu") {
-            return in_array('mega_menu', $enabledLocations);
-        }
-
-        if ($location == "quicklinks") {
-            return in_array('quicklinks', $enabledLocations);
-        }
-
-        return false;
     }
 
     /**

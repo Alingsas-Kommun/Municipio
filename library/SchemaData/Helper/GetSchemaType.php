@@ -11,8 +11,7 @@ use AcfService\Contracts\GetField;
  */
 class GetSchemaType
 {
-    private static ?GetField $acfService   = null;
-    public static ?array $schemaTypesInUse = null;
+    private static ?GetField $acfService = null;
 
     /**
      * Sets the ACF service instance.
@@ -36,11 +35,12 @@ class GetSchemaType
             throw new \Exception('AcfService not set');
         }
 
-        if (is_null(self::$schemaTypesInUse)) {
-            self::$schemaTypesInUse = self::$acfService->getField('post_type_schema_types', 'option') ?: [];
+        $schemaTypesInUse = self::$acfService->getField('post_type_schema_types', 'option') ?: [];
+        if (is_array($schemaTypesInUse)) {
+            return $schemaTypesInUse;
         }
 
-        return self::$schemaTypesInUse;
+        return [];
     }
 
     /**
@@ -51,11 +51,9 @@ class GetSchemaType
      */
     public static function getSchemaTypeFromPostType(string $postType): false|string
     {
-        if (is_null(self::$schemaTypesInUse)) {
-            self::getSchemaTypesInUse();
-        }
+        $schemaTypesInUse = self::getSchemaTypesInUse();
 
-        foreach (self::$schemaTypesInUse as $postAndSchemaTypeArray) {
+        foreach ($schemaTypesInUse as $postAndSchemaTypeArray) {
             if ($postAndSchemaTypeArray['post_type'] === $postType) {
                 return $postAndSchemaTypeArray['schema_type'];
             }
@@ -72,15 +70,13 @@ class GetSchemaType
      */
     public static function getPostTypesFromSchemaType(string $schemaType): array
     {
-        if (is_null(self::$schemaTypesInUse)) {
-            self::getSchemaTypesInUse();
-        }
+        $schemaTypesInUse = self::getSchemaTypesInUse();
 
         $postTypes = array_map(
             fn ($row) => $row['schema_type'] === $schemaType
             ? $row['post_type']
             : null,
-            self::$schemaTypesInUse
+            $schemaTypesInUse
         );
 
         return array_filter($postTypes);

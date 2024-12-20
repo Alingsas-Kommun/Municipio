@@ -4,8 +4,6 @@ namespace Municipio\Controller;
 
 use Municipio\Helper\WP;
 use Municipio\Controller\Navigation\Config\MenuConfig;
-use Municipio\Controller\Navigation\MenuBuilder;
-use Municipio\Controller\Navigation\MenuDirector;
 
 /**
  * Class Archive
@@ -588,7 +586,6 @@ class Archive extends \Municipio\Controller\BaseController
             foreach ($posts as $post) {
                 $post            = \Municipio\Helper\Post::preparePostObject($post);
                 $post->href      = $post->permalink;
-                $post->excerpt   = $post->postExcerpt;
                 $preparedPosts[] = $post;
             }
         }

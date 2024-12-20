@@ -146,12 +146,8 @@ class Template
     */
     public function loadController(string $template = ''): array
     {
-        if (!is_post_publicly_viewable() && !is_user_logged_in() && !is_search()) {
+        if (!is_post_publicly_viewable() && !is_user_logged_in() && !is_search() && !is_archive()) {
             $template = '404';
-        }
-
-        if (is_archive() && ($template === 'one-page' || $template === 'page-centered')) {
-            $template = 'archive';
         }
 
         //Do something before controller creation
@@ -349,7 +345,7 @@ class Template
                     }
 
                     // Template slug
-                    if (get_page_template_slug()) {
+                    if (get_queried_object() && get_page_template_slug()) {
                         $type = get_page_template_slug();
                     }
 

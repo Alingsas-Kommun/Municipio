@@ -93,7 +93,6 @@ add_action('init', function () use ($wpService) {
         'options-theme-post-timestamps'              => 'group_56cacd2f1873f',
         'options-theme-post-types'                   => 'group_56c6ba934d682',
         'options-theme-primary-navigation'           => 'group_56e935ea546ce',
-        'options-theme-fixed-action-bar'             => 'group_5a2957d095e95',
         'options-theme-scroll-elevator'              => 'group_5825be470579f',
         'options-theme-search'                       => 'group_569fa7edcdd6b',
         'options-theme-search-display'               => 'group_56a72f6430912',
@@ -105,11 +104,13 @@ add_action('init', function () use ($wpService) {
         'options-menu-style'                         => 'group_61dc486660615',
         'options-menu-floating'                      => 'group_60c86946524a0',
         'options-menu-mega'                          => 'group_6502be085ee3b',
-        'options-menu-description'                   => 'group_650296216899c',
         'options-menu-language'                      => 'group_6141cc9c72cc3',
         'options-api-resources-apis'                 => 'group_653a1673dc501',
+        'options-comment-settings'                   => 'group_67173bdc92fde',
         'options-customize-header'                   => 'group_5afa93c0a25e1',
         'options-customize-footer'                   => 'group_5afa94c88e1aa',
+        'options-login-logout'                       => 'group_67597150948c7',
+        'options-login-redirect'                     => 'group_675aecfbf2f3d',
         'resource-fields'                            => 'group_653a509450198',
         'user-author-image'                          => 'group_56c714b46105e',
         'widget-contact'                             => 'group_56c58bade87dc',
@@ -121,7 +122,6 @@ add_action('init', function () use ($wpService) {
         'widget-media'                               => 'group_5b2b70c0bde2f',
         'media-attachments'                          => 'group_650857c9f2cce',
         'hidden-validation'                          => 'group_654a2a57e6897',
-        'additional-menu-settings'                   => 'group_66e05ac66c932'
     ));
 
     $acfExportManager->autoExport($autoExportIds);
