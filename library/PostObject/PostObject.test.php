@@ -3,6 +3,8 @@
 namespace Municipio\PostObject;
 
 use PHPUnit\Framework\TestCase;
+use WpService\Contracts\GetCurrentBlogId;
+use WpService\Implementations\FakeWpService;
 
 /**
  * PostObject
@@ -13,7 +15,9 @@ class PostObjectTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->instance = new PostObject();
+        $this->instance = new PostObject(new FakeWpService([
+            'getCurrentBlogId' => 1,
+        ]));
     }
 
     /**
@@ -49,14 +53,6 @@ class PostObjectTest extends TestCase
     }
 
     /**
-     * @testdox getTermIcons() returns an empty array
-     */
-    public function testGetTermIconsReturnsAnEmptyArray()
-    {
-        $this->assertEquals([], $this->instance->getTermIcons());
-    }
-
-    /**
      * @testdox getPostType() returns an empty string
      */
     public function testGetPostTypeReturnsAnEmptyString()
@@ -65,10 +61,34 @@ class PostObjectTest extends TestCase
     }
 
     /**
-     * @testdox getTermIcon() returns null
+     * @testdox getIcon() returns null
      */
-    public function testGetTermIconReturnsNull()
+    public function testGetIconReturnsNull()
     {
-        $this->assertNull($this->instance->getTermIcon());
+        $this->assertNull($this->instance->getIcon());
+    }
+
+    /**
+     * @testdox getBlogId() current blog id
+     */
+    public function testGetBlogIdReturns1()
+    {
+        $this->assertEquals(1, $this->instance->getBlogId());
+    }
+
+    /**
+     * @testdox getArchiveDateTimestamp() returns 0
+     */
+    public function testGetArchiveDateTimestampReturnsNull()
+    {
+        $this->assertEquals(null, $this->instance->getArchiveDateTimestamp());
+    }
+
+    /**
+     * @testdox getArchiveDateFormat() returns default format
+     */
+    public function testGetArchiveDateFormatReturnsDefaultFormat()
+    {
+        $this->assertEquals('date-time', $this->instance->getArchiveDateFormat());
     }
 }

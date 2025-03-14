@@ -3,7 +3,6 @@
         'user', 
         'user--active', 
         !empty($customizer->loginLogoutColorScheme) ? 'user--' . $customizer->loginLogoutColorScheme : '',
-        $loginLogoutHasBackgroundColor ? 'user--has-background' : '',
         'u-print-display--none'
     ], $classList ?? []),
     'context' => ['header.loginlogout', 'header.loginlogout.logout'],
@@ -25,9 +24,7 @@
     @group([
         'direction' => 'vertical',
         'classList' => [
-            'user__container',
-            'u-display--none@xs',
-            'u-display--none@sm',
+            'user__container'
         ]
     ])
         @typography([
@@ -60,24 +57,4 @@
             @endtypography
         @endlink
     @endgroup
-
-    <!-- Logout mobile -->
-    @button([
-        'text' => $lang->logout,
-        'color' => 'basic',
-        'style' => 'basic',
-        'href' => $logoutUrl,
-        'classList' => [
-            'u-display--none@md',
-            'u-display--none@lg',
-            'u-display--none@xl',
-            'u-display--none@xxl',
-            'user__button',
-            'js-action-logout-click'
-        ],
-    ])
-    @endbutton
 @endelement
-
-
-

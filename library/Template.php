@@ -6,11 +6,13 @@ use WpService\WpService;
 use AcfService\AcfService;
 use ComponentLibrary\Init;
 use HelsingborgStad\BladeService\BladeServiceInterface;
+use Municipio\Admin\Private\MainQueryUserGroupRestriction;
 use Municipio\Config\Features\SchemaData\SchemaDataConfigInterface;
 use Municipio\Controller\Navigation\MenuBuilderInterface;
 use Municipio\Controller\Navigation\MenuDirector;
 use Municipio\Helper\Controller as ControllerHelper;
 use Municipio\Helper\Template as TemplateHelper;
+use Municipio\Helper\SiteSwitcher\SiteSwitcher;
 
 /**
  * Class Template
@@ -34,7 +36,9 @@ class Template
         private MenuDirector $menuDirector,
         private AcfService $acfService,
         private WpService $wpService,
-        private SchemaDataConfigInterface $schemaDataConfig
+        private SchemaDataConfigInterface $schemaDataConfig,
+        private MainQueryUserGroupRestriction $mainQueryUserGroupRestriction,
+        private SiteSwitcher $siteSwitcher
     ) {
         //Init custom templates & views
         add_action('template_redirect', array($this, 'registerViewPaths'), 10);
@@ -146,8 +150,21 @@ class Template
     */
     public function loadController(string $template = ''): array
     {
-        if (!is_post_publicly_viewable() && !is_user_logged_in() && !is_search() && !is_archive()) {
-            $template = '404';
+        global $wp_query;
+
+        if (
+            !is_post_publicly_viewable() && !is_user_logged_in() && !is_search() && !is_archive() ||
+            $this->mainQueryUserGroupRestriction->shouldRestrict($this->wpService->getQueriedObjectId())
+        ) {
+            if ($wp_query->found_posts > 0) {
+                if (!is_user_logged_in()) {
+                    $template = '401';
+                } else {
+                    $template = '403';
+                }
+            } else {
+                $template = '404';
+            }
         }
 
         //Do something before controller creation
@@ -176,6 +193,16 @@ class Template
                 'condition'       => ('404' === $template),
                 'controllerClass' => \Municipio\Controller\E404::class,
                 'controllerPath'  => ControllerHelper::locateController('E404'),
+            ],
+            [
+                'condition'       => ('403' === $template),
+                'controllerClass' => \Municipio\Controller\E403::class,
+                'controllerPath'  => ControllerHelper::locateController('E403'),
+            ],
+            [
+                'condition'       => ('401' === $template),
+                'controllerClass' => \Municipio\Controller\E401::class,
+                'controllerPath'  => ControllerHelper::locateController('E401'),
             ],
             [
                 'condition'       => $shouldUseSchemaController(),
@@ -255,7 +282,7 @@ class Template
             '3.0',
             'Municipio/blade/afterLoadController'
         );
-        return new $c['controllerClass']($this->menuBuilder, $this->menuDirector, $this->wpService, $this->acfService);
+        return new $c['controllerClass']($this->menuBuilder, $this->menuDirector, $this->wpService, $this->acfService, $this->siteSwitcher);
     }
     /**
      * @param $view
@@ -268,23 +295,25 @@ class Template
                 ->makeView($view, array_merge($data, array('errorMessage' => false)), [], $this->viewPaths)
                 ->render();
 
-            // Adds the option to make html more readable.
-            // This is a option that is intended for permanent
-            // use. But cannot be implemented due to some html
-            // issues.
-            if (class_exists('tidy') && isset($_GET['tidy'])) {
+            // Adds the option to make html more readable and fixes some validation issues (like /> in void elements)
+            if (class_exists('tidy') && (!defined('DISABLE_HTML_TIDY') || constant('DISABLE_HTML_TIDY') !== true)) {
                 $tidy = new \tidy();
 
                 $tidy->parseString($markup, [
-                    'indent'       => true,
-                    'output-xhtml' => false,
-                    'wrap'         => PHP_INT_MAX
+                    'indent'              => true,
+                    'output-xhtml'        => false,
+                    'wrap'                => PHP_INT_MAX,
+                    'doctype'             => 'html5',
+                    'drop-empty-elements' => false,
+                    'drop-empty-paras'    => false
                 ], 'utf8');
 
                 $tidy->cleanRepair();
 
+                //phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
                 echo $tidy;
             } else {
+                //phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
                 echo $markup;
             }
         } catch (\Throwable $e) {
@@ -316,6 +345,8 @@ class Template
             'single'     => 'single.blade.php',
             'page'       => 'page.blade.php',
             '404'        => '404.blade.php',
+            '403'        => '403.blade.php',
+            '401'        => '401.blade.php',
             'archive'    => 'archive.blade.php',
             'author'     => 'author.blade.php',
             'category'   => 'category.blade.php',

@@ -22,11 +22,13 @@
             </article>
 
             <!-- Dates -->
-            @if(!empty($post->archiveDate))
+            @if(!empty($post->getArchiveDateTimestamp()))
                 @typography(['variant' => 'meta', 'element' => 'p', 'classList' => ['archive-compressed__date', 'u-margin__top--4']])
                     {{$lang->publish}}: 
                     @date([
-                        'timestamp' => $post->archiveDate
+                        'action' => 'formatDate',
+                        'timestamp' => $post->getArchiveDateTimestamp(),
+                        'format' => $post->getArchiveDateFormat()
                     ])
                     @enddate
                 @endtypography
@@ -35,7 +37,8 @@
                     {{$lang->publish}}: 
                     @date([
                         'action' => 'formatDate',
-                        'timestamp' => $post->postDate
+                        'timestamp' => $post->getPublishedTime(),
+                        'format' => $post->archiveDateFormat
                     ])
                     @enddate
                 @endtypography	
@@ -44,7 +47,8 @@
                     {{$lang->updated}}: 
                     @date([
                         'action' => 'formatDate',
-                        'timestamp' => $post->postModified
+                        'timestamp' => $post->getModifiedTime(),
+                        'format' => $post->archiveDateFormat
                     ])
                     @enddate
                 @endtypography	

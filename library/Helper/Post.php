@@ -7,12 +7,29 @@ use Municipio\Helper\Image;
 use WP_Post;
 use Municipio\Integrations\Component\ImageResolver;
 use ComponentLibrary\Integrations\Image\Image as ImageComponentContract;
-use Municipio\PostObject\TermIcon\TryGetTermIcon;
+use Municipio\Helper\Term\Term;
+use Municipio\PostObject\Date\ArchiveDateFormatResolver;
+use Municipio\PostObject\Date\ArchiveDateSourceResolver;
+use Municipio\PostObject\Date\CachedArchiveDateFormatResolver;
 use Municipio\PostObject\Decorators\BackwardsCompatiblePostObject;
+use Municipio\PostObject\Decorators\IconResolvingPostObject;
+use Municipio\PostObject\Decorators\PostObjectFromOtherBlog;
 use Municipio\PostObject\Decorators\PostObjectFromWpPost;
-use Municipio\PostObject\Decorators\PostObjectWithTermIcons;
+use Municipio\PostObject\Decorators\PostDateTimestamp;
+use Municipio\PostObject\Decorators\PostObjectDateTimestamp;
+use Municipio\PostObject\Decorators\PostObjectWithOtherBlogIdFromSwitchedState;
+use Municipio\PostObject\Decorators\PostObjectWithSeoRedirect;
+use Municipio\PostObject\Icon\Resolvers\CachedIconResolver;
+use Municipio\PostObject\Icon\Resolvers\NullIconResolver;
+use Municipio\PostObject\Icon\Resolvers\PostIconResolver;
+use Municipio\PostObject\Icon\Resolvers\TermIconResolver;
 use Municipio\PostObject\PostObject;
 use Municipio\PostObject\PostObjectInterface;
+use Municipio\PostObject\Date\CachedArchiveDateSourceResolver;
+use Municipio\PostObject\Date\CachedTimestampResolver;
+use Municipio\PostObject\Date\TimestampResolver;
+use Municipio\PostObject\Decorators\PostObjectArchiveDateFormat;
+use Municipio\PostObject\Decorators\PostObjectArchiveDateTimestamp;
 
 /**
  * Class Post
@@ -54,8 +71,7 @@ class Post
                 'post_language',
                 'reading_time',
                 'quicklinks',
-                'call_to_action_items',
-                'term_icon'
+                'call_to_action_items'
             ],
             $data
         );
@@ -148,9 +164,33 @@ class Post
     {
         $camelCasedPost = \Municipio\Helper\FormatObject::camelCase($post);
         $wpService      = \Municipio\Helper\WpService::get();
+        $acfService     = \Municipio\Helper\AcfService::get();
 
-        $postObject = new PostObjectFromWpPost(new PostObject(), $post, $wpService);
-        $postObject = new PostObjectWithTermIcons($postObject, $wpService, new TryGetTermIcon());
+        $postObject = new PostObjectFromWpPost(new PostObject($wpService), $post, $wpService);
+        $postObject = new PostObjectWithSeoRedirect($postObject, $wpService);
+
+        $archiveDateFormatResolver = new ArchiveDateFormatResolver($postObject, $wpService);
+        $archiveDateFormatResolver = new CachedArchiveDateFormatResolver($postObject, $archiveDateFormatResolver);
+        $postObject                = new PostObjectArchiveDateFormat($postObject, $archiveDateFormatResolver);
+
+        $archiveDateSourceResolver = new ArchiveDateSourceResolver($postObject, $wpService);
+        $archiveDateSourceResolver = new CachedArchiveDateSourceResolver($postObject, $archiveDateSourceResolver);
+        $stringToTimeHelper        = new StringToTime($wpService);
+        $timestampResolver         = new TimestampResolver($postObject, $wpService, $archiveDateSourceResolver, $stringToTimeHelper);
+        $timestampResolver         = new CachedTimestampResolver($postObject, $wpService, $timestampResolver);
+
+        $postObject = new PostObjectArchiveDateTimestamp($postObject, $timestampResolver);
+
+        $iconResolver = new TermIconResolver($postObject, $wpService, new Term($wpService, AcfService::get()), new NullIconResolver());
+        $iconResolver = new PostIconResolver($postObject, $acfService, $iconResolver);
+        $iconResolver = new CachedIconResolver($postObject, $iconResolver);
+
+        $postObject = new IconResolvingPostObject($postObject, $iconResolver);
+
+        if ($wpService->isMultiSite() && $wpService->msIsSwitched()) {
+            $postObject = new PostObjectFromOtherBlog($postObject, $wpService, $wpService->getCurrentBlogId());
+        }
+
         $postObject = new BackwardsCompatiblePostObject($postObject, $camelCasedPost);
 
         self::$runtimeCache[$cacheGroup][$cacheKey] = $postObject;
@@ -316,10 +356,6 @@ class Post
             $postObject->termsUnlinked = self::getPostTerms($postObject->ID, false, $taxonomiesToDisplay);
         }
 
-        if (in_array('term_icon', $appendFields) && !empty($postObject->terms) && !empty($postObject->post_type)) {
-            $postObject->termIcon = self::getPostTermIcon($postObject->ID, $postObject->post_type);
-        }
-
         if (in_array('post_language', $appendFields)) {
             $siteLang = strtolower(get_bloginfo('language') ?? '');
             $postLang = strtolower(get_field('lang', $postObject->ID) ?? $siteLang);
@@ -438,54 +474,6 @@ class Post
         }
 
         return [strip_shortcodes($postObject->post_content), false];
-    }
-
-    /**
-     * Get the icon and color associated with terms for a post.
-     *
-     * Iterates through the taxonomies of the post type and retrieves the terms.
-     * For each term, it gets the icon and color using the \Municipio\Helper\Term class.
-     * The first found icon and color are used to build an associative array representing
-     * the term icon, which includes properties like icon source, size, color, and background color.
-     * The resulting array is then filtered using 'Municipio/Helper/Post/getPostTermIcon' filter.
-     *
-     * @param int    $postId   The post identifier.
-     * @param string $postType The post type.
-     * @return array The term icon associative array.
-     */
-    private static function getPostTermIcon($postId, $postType)
-    {
-        $taxonomies = get_object_taxonomies($postType);
-
-        $termIcon  = [];
-        $termColor = false;
-        foreach ($taxonomies as $taxonomy) {
-            $terms = get_the_terms($postId, $taxonomy);
-            if (!empty($terms)) {
-                foreach ($terms as $term) {
-                    if (empty($termIcon)) {
-                        $icon  = \Municipio\Helper\Term::getTermIcon($term, $taxonomy);
-                        $color = \Municipio\Helper\Term::getTermColor($term, $taxonomy);
-                        if (!empty($icon) && !empty($icon['src']) && $icon['type'] == 'icon') {
-                            $termIcon['icon']            = $icon['src'];
-                            $termIcon['size']            = 'md';
-                            $termIcon['color']           = 'white';
-                            $termIcon['backgroundColor'] = $color;
-                        }
-
-                        if (!empty($color)) {
-                            $termColor = $color;
-                        }
-                    }
-                }
-            }
-        }
-
-        if (empty($termIcon) && !empty($termColor)) {
-            $termIcon['backgroundColor'] = $color;
-        }
-
-        return \apply_filters('Municipio/Helper/Post/getPostTermIcon', $termIcon);
     }
 
     /**
@@ -683,12 +671,8 @@ class Post
                 'c-image',
                 'c-image__caption',
                 'c-image__image wp-image-',
-                'u-float--left@sm u-float--left@md u-float--left@lg u-float--left@xl u-float--left@xl u-margin__y--2 
-                u-margin__right--2@sm u-margin__right--2@md u-margin__right--2@lg u-margin__right--2@xl 
-                u-width--100@xs',
-                'u-float--right@sm u-float--right@md u-float--right@lg u-float--right@xl u-float--right@xl 
-                u-margin__y--2 u-margin__left--2@sm u-margin__left--2@md u-margin__left--2@lg u-margin__left--2@xl 
-                u-width--100@xs',
+                'u-float--left@sm u-float--left@md u-float--left@lg u-float--left@xl u-float--left@xl u-margin__y--2 u-margin__right--2@sm u-margin__right--2@md u-margin__right--2@lg u-margin__right--2@xl u-width--100@xs',
+                'u-float--right@sm u-float--right@md u-float--right@lg u-float--right@xl u-float--right@xl u-margin__y--2 u-margin__left--2@sm u-margin__left--2@md u-margin__left--2@lg u-margin__left--2@xl u-width--100@xs',
                 '',
                 'u-margin__x--auto u-text-align--center',
 

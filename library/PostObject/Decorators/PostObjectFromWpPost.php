@@ -2,6 +2,7 @@
 
 namespace Municipio\PostObject\Decorators;
 
+use Municipio\PostObject\Icon\IconInterface;
 use WP_Post;
 use Municipio\PostObject\PostObjectInterface;
 use WpService\Contracts\GetCommentCount;
@@ -10,17 +11,16 @@ use WpService\Contracts\GetPermalink;
 /**
  * PostObject from WP_Post.
  */
-class PostObjectFromWpPost extends AbstractPostObjectDecorator implements PostObjectInterface
+class PostObjectFromWpPost implements PostObjectInterface
 {
     /**
      * Constructor.
      */
     public function __construct(
-        PostObjectInterface $inner,
+        private PostObjectInterface $postObject,
         private WP_Post $wpPost,
         private GetPermalink&GetCommentCount $wpService
     ) {
-        $this->postObject = $inner;
     }
 
     /**
@@ -61,5 +61,53 @@ class PostObjectFromWpPost extends AbstractPostObjectDecorator implements PostOb
     public function getPostType(): string
     {
         return $this->wpPost->post_type;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function getIcon(): ?IconInterface
+    {
+        return $this->postObject->getIcon();
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function getBlogId(): int
+    {
+        return $this->postObject->getBlogId();
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function getPublishedTime(bool $gmt = false): int
+    {
+        return strtotime($gmt ? $this->wpPost->post_date_gmt : $this->wpPost->post_date);
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function getModifiedTime(bool $gmt = false): int
+    {
+        return strtotime($gmt ? $this->wpPost->post_modified_gmt : $this->wpPost->post_modified);
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function getArchiveDateTimestamp(): ?int
+    {
+        return $this->postObject->getArchiveDateTimestamp();
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function getArchiveDateFormat(): string
+    {
+        return $this->postObject->getArchiveDateFormat();
     }
 }

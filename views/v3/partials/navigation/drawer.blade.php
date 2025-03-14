@@ -30,7 +30,7 @@
     @slot('search')
         @includeWhen(
                 $showMobileSearchDrawer,
-                'partials.search.mobile-search-form',
+                'partials.search.drawer-search-form',
                 ['classList' => ['search-form', 'u-margin__top--2', 'u-width--100']]
             )
     @endslot
@@ -67,15 +67,17 @@
                     'expandLabel' => $lang->expand
                 ])
             @endnav  
-
-            @includeWhen(
-                !empty($customizer->headerLoginLogoutShowInMobileMenu),
-                'partials.header.components.user',
-                [
-                    'classList' => ['user--drawer']
-                ]
-            )
         @endslot
+        @if (!empty($customizer->headerLoginLogoutShowInMobileMenu))
+            @slot('afterMenu')
+                @include(
+                    'partials.header.components.user',
+                    [
+                        'classList' => ['user--drawer']
+                    ]
+                )
+            @endslot
+        @endif
       @else
       {{-- No menu items found --}}
       @endif

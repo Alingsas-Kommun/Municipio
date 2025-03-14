@@ -2,6 +2,7 @@
 
 namespace Municipio\PostObject;
 
+use Municipio\PostObject\Icon\IconInterface;
 use Municipio\PostObject\TermIcon\TermIconInterface;
 
 interface PostObjectInterface
@@ -35,23 +36,54 @@ interface PostObjectInterface
     public function getCommentCount(): int;
 
     /**
-     * Get the term icons.
-     *
-     * @return \Municipio\PostObject\TermIcon\TermIconInterface[]
-     */
-    public function getTermIcons(): array;
-
-    /**
-     * Get the term icon.
-     * The first term icon found.
-     *
-     * @param string|null $taxonomy Optional taxonomy to get the term icon from. If null, the first term icon found will be returned regardless of taxonomy.
-     * @return \Municipio\PostObject\TermIcon\TermIconInterface|null The first term icon found or null if none is found.
-     */
-    public function getTermIcon(?string $taxonomy = null): ?TermIconInterface;
-
-    /**
      * Get the post type.
      */
     public function getPostType(): string;
+
+    /**
+     * Get the post object icon.
+     *
+     * @return IconInterface|null The post object icon or null if none is found.
+     */
+    public function getIcon(): ?IconInterface;
+
+    /**
+     * Get the post object blog id.
+     * Returns the blog id of the post objects origin.
+     *
+     * @return int
+     */
+    public function getBlogId(): int;
+
+    /**
+     * Get the post object publish timestamp.
+     *
+     * @param bool $gmt Whether to return the GMT time.
+     *
+     * @return int
+     */
+    public function getPublishedTime(bool $gmt = false): int;
+
+    /**
+     * Get the post object modified timestamp.
+     *
+     * @param bool $gmt Whether to return the GMT time.
+     *
+     * @return int
+     */
+    public function getModifiedTime(bool $gmt = false): int;
+
+    /**
+     * Get the post object date timestamp.
+     *
+     * @return int
+     */
+    public function getArchiveDateTimestamp(): ?int;
+
+    /**
+     * Get the post object date format.
+     *
+     * @return string
+     */
+    public function getArchiveDateFormat(): string;
 }

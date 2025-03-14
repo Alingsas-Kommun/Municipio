@@ -2,6 +2,7 @@
 
 namespace Municipio\Controller;
 
+use WP_Term;
 use WpService\WpService;
 use AcfService\AcfService;
 use Municipio\Helper\FormatObject;
@@ -12,6 +13,7 @@ use Municipio\Controller\Navigation\Config\MenuConfig;
 use Municipio\Controller\Navigation\MenuBuilderInterface;
 use Municipio\Controller\Navigation\MenuDirector;
 use Municipio\Helper\CurrentPostId;
+use Municipio\Helper\SiteSwitcher\SiteSwitcher;
 
 /**
  * This class serves as the base controller for all controllers in the theme.
@@ -59,7 +61,8 @@ class BaseController
         protected MenuBuilderInterface $menuBuilder,
         protected MenuDirector $menuDirector,
         protected WpService $wpService,
-        protected AcfService $acfService
+        protected AcfService $acfService,
+        protected SiteSwitcher $siteSwitcher
     ) {
         //Store globals
         $this->globalToLocal('wp_query', 'wpQuery');
@@ -81,7 +84,6 @@ class BaseController
         $this->data['adminUrl']           = $this->getAdminUrl();
         $this->data['homeUrlPath']        = parse_url(get_home_url(), PHP_URL_PATH);
         $this->data['siteName']           = $this->getSiteName();
-
 
         //View porperties
         $this->data['isFrontPage'] = is_front_page() || is_home() ? true : false;
@@ -124,9 +126,6 @@ class BaseController
                 $headerController = new $headerClassName($this->data['customizer']);
             }
         }
-
-        //User login logout
-        $this->data['loginLogoutHasBackgroundColor'] = $this->checkHeaderLoginLogoutHasBackgroundColor();
 
         $this->data['headerData'] = isset($headerController) ? $headerController->getHeaderData() : [];
 
@@ -339,6 +338,9 @@ class BaseController
             $this->getCurrentUrl(['loggedout' => 'true'])
         );
 
+        // User basic details
+        $this->data['userDetails'] = $this->getUserDetails();
+
         //User role
         $this->data['userRole'] = $this->getUserRole();  //TODO: MOVE TO USER HELPER CLASS
 
@@ -419,6 +421,7 @@ class BaseController
                 'innerLoopStart'       => $this->hook('inner_loop_start'),
                 'innerLoopEnd'         => $this->hook('inner_loop_end'),
                 'articleContentBefore' => $this->hook('article_content_before'),
+                'articleContentAfter'  => $this->hook('article_content_after'),
                 'loopStart'            => $this->hook('loop_start'),
                 'loopEnd'              => $this->hook('loop_end'),
                 'secondaryLoopStart'   => $this->hook('secondary_loop_start'),
@@ -437,6 +440,28 @@ class BaseController
     }
 
     /**
+     * Get the current user details
+     *
+     * @return object
+     */
+    private function getUserDetails(): ?object
+    {
+        $user = $this->wpService->wpGetCurrentUser();
+
+        if (!$user) {
+            return null;
+        }
+
+        return (object) [
+            'id'          => $user->ID,
+            'email'       => $user->user_email,
+            'displayname' => $user->display_name,
+            'firstname'   => $user->first_name,
+            'lastname'    => $user->last_name,
+        ];
+    }
+
+    /**
      * Get the current URL with optional query parameters.
      *
      * @param array $queryParam Key-value pairs to add or override in the query string.
@@ -447,30 +472,6 @@ class BaseController
         $permalink = urldecode($this->wpService->getPermalink(\Municipio\Helper\CurrentPostId::get()));
         $permalink = add_query_arg($queryParam, $permalink);
         return urldecode($permalink);
-    }
-
-    /**
-     * Check if the login/logout button has a background color
-     *
-     * @return bool
-     */
-    private function checkHeaderLoginLogoutHasBackgroundColor()
-    {
-        $customizer = $this->data['customizer'];
-
-        if (empty($customizer->headerLoginLogoutBackgroundColor)) {
-            return false;
-        }
-
-        $colorValues = explode(",", $customizer->headerLoginLogoutBackgroundColor);
-
-        if (!isset($colorValues[3])) {
-            return false;
-        }
-
-        $alpha = preg_replace('/[^0-9.]/', '', $colorValues[3]);
-
-        return !empty($alpha);
     }
 
     /**
@@ -806,12 +807,24 @@ class BaseController
     }
 
     /**
-     * Get home url
+     * Get the appropriate home URL, considering multisite and subdirectory setups.
+     *
      * @return string
      */
     protected function getHomeUrl(): string
     {
-        return apply_filters('Municipio/homeUrl', esc_url(get_home_url()));
+        if (is_multisite() && !is_subdomain_install() && !is_main_site()) {
+            $homeUrl = $this->siteSwitcher->runInSite(
+                $this->wpService->getMainSiteId(),
+                function () {
+                    return $this->getHomeUrl();
+                }
+            );
+        } else {
+            $homeUrl = get_home_url();
+        }
+
+        return apply_filters('Municipio/homeUrl', esc_url($homeUrl));
     }
 
     /**

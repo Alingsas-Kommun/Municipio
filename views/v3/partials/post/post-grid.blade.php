@@ -16,8 +16,11 @@
                         'alt' => $post->images['thumbnail16:9']['alt'] ?? '' ? $post->images['thumbnail16:9']['alt'] ?? '' : $post->postTitle,
                         'backgroundColor' => 'secondary'
                     ],
-                    'date' => $post->archiveDate,
-                    'dateBadge' => $post->archiveDateFormat == 'date-badge',
+                    'date' => [
+                        'timestamp' => $post->getArchiveDateTimestamp(),
+                        'format'    => $post->getArchiveDateFormat(),
+                    ],
+                    'dateBadge' => $post->getArchiveDateFormat() == 'date-badge',
                     'classList' => ['t-archive-block'],
                     'context' => ['archive', 'archive.list', 'archive.list.block'],
                 ])

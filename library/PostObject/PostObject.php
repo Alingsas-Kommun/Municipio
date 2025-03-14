@@ -2,14 +2,22 @@
 
 namespace Municipio\PostObject;
 
+use Municipio\PostObject\Icon\IconInterface;
 use Municipio\PostObject\PostObjectInterface;
-use Municipio\PostObject\TermIcon\TermIconInterface;
+use WpService\Contracts\GetCurrentBlogId;
 
 /**
  * PostObject
  */
 class PostObject implements PostObjectInterface
 {
+    /**
+     * Constructor.
+     */
+    public function __construct(private GetCurrentBlogId $wpService)
+    {
+    }
+
     /**
      * @inheritDoc
      */
@@ -45,14 +53,6 @@ class PostObject implements PostObjectInterface
     /**
      * @inheritDoc
      */
-    public function getTermIcons(): array
-    {
-        return [];
-    }
-
-    /**
-     * @inheritDoc
-     */
     public function getPostType(): string
     {
         return '';
@@ -61,8 +61,48 @@ class PostObject implements PostObjectInterface
     /**
      * @inheritDoc
      */
-    public function getTermIcon(?string $taxonomy = null): ?TermIconInterface
+    public function getIcon(): ?IconInterface
     {
         return null;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function getBlogId(): int
+    {
+        return $this->wpService->getCurrentBlogId();
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function getPublishedTime(bool $gmt = false): int
+    {
+        return 0;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function getModifiedTime(bool $gmt = false): int
+    {
+        return 0;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function getArchiveDateTimestamp(): ?int
+    {
+        return null;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function getArchiveDateFormat(): string
+    {
+        return 'date-time';
     }
 }

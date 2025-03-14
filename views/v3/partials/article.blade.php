@@ -44,6 +44,8 @@
             @image([
                 'src' => $featuredImage['src'],
                 'alt' => $featuredImage['alt'] ?? '',
+                'caption' => $featuredImage['caption'],
+                'removeCaption' => !$displayFeaturedImageCaption,
                 'classList' => ['c-article__feature-image', 'u-box-shadow--1']
             ])
             @endimage
@@ -80,6 +82,8 @@
         @endtags
     @endif
     @section('article.terms.after')@show
+
+    {!! $hook->articleContentAfter !!}
 
     <!-- Blog style author signature -->
     @section('content.below')
