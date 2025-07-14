@@ -145,6 +145,17 @@ Do action on comment like
 do_action('Municipio/comment/save_like', $comment, $userId, $create);
 ```
 
+### Municipio/post/page/edit
+
+Do action on post edit in admin. Runs after the current_screen hook.
+Useful when something needs to execute when on the edit page of a post in admin and possibly needs access to the current post id or the post type of that post.
+
+- ```@param int $postId``` - The post ID
+- ```@param string $postType``` - The post type
+```php
+do_action('Municipio/post/page/edit', $postId, $postType);
+```
+
 ## Filters
 
 ### Municipio/Template/viewData
@@ -442,6 +453,23 @@ add_filter('Municipio/Controller/SingularContentType/listing', function($listing
     return $listing;
 }, 10, 2);
 ```
+
+### Municipio/DecoratePostObject
+
+Filters the PostObject instance after it has been constructed and decorated.
+
+This filter allows developers to further modify or decorate the PostObject instance before it is returned by the factory. It is useful for injecting additional behavior, properties, or wrappers around the PostObject, enabling extensibility and customization of the post object representation throughout the application.
+
+- `@param \Municipio\PostObject\PostObjectInterface $postObject` - The decorated PostObject instance to be filtered.
+- `@return \Municipio\PostObject\PostObjectInterface` - The (potentially further) decorated PostObject instance.
+
+```php
+add_filter('Municipio/DecoratePostObject', function(PostObjectInterface $postObject):PostObjectInterface {
+    // Example: Add custom decorator or modify the post object
+    return new MyCustomPostObjectDecorator($postObject);
+});
+```
+
 ## REST routes
 The following REST API routes are available from the theme.
 

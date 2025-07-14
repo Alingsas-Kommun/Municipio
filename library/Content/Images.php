@@ -5,8 +5,14 @@ namespace Municipio\Content;
 use Municipio\Integrations\Component\ImageResolver;
 use ComponentLibrary\Integrations\Image\Image as ImageComponentContract;
 
+/**
+ * Class Images
+ */
 class Images
 {
+    /**
+     * Images constructor.
+     */
     public function __construct()
     {
         add_filter('the_content', array($this, 'normalizeImages'), 11);
@@ -211,7 +217,11 @@ class Images
         if (is_string($html) && !empty($html)) {
             $newNode = \Municipio\Helper\FormatObject::createNodeFromString($dom, $html);
             if ($newNode instanceof \DOMElement && $element->parentNode instanceof \DOMElement) {
-                $element->parentNode->replaceChild($newNode, $element);
+                while ($element->firstChild) {
+                    $element->removeChild($element->firstChild);
+                }
+
+                $element->appendChild($newNode);
             }
         }
     }
@@ -249,6 +259,7 @@ class Images
         // Reconstruct the URL without the query part
         $sanitizedUrl  = isset($parsedUrl['scheme']) ? $parsedUrl['scheme'] . '://' : '';
         $sanitizedUrl .= isset($parsedUrl['host']) ? $parsedUrl['host'] : '';
+        $sanitizedUrl .= isset($parsedUrl['port']) && !in_array($parsedUrl['port'], [80, 443]) ? ':' . $parsedUrl['port'] : '';
         $sanitizedUrl .= isset($parsedUrl['path']) ? $parsedUrl['path'] : '';
 
         // Remove the pixelsize

@@ -32,9 +32,9 @@
         "pragmarx/ia-arr": "^7.3",
         "symfony/polyfill-php80": "^1.27",
         "dompdf/dompdf": "^2.0.4",
-        "spatie/schema-org": "^3.9",
         "helsingborg-stad/wpservice": "^2.0",
-        "helsingborg-stad/acfservice": "~0.4"
+        "helsingborg-stad/acfservice": "^1.0.0",
+        "helsingborg-stad/schema-library": "^0.2"
     },
     "extra": {
         "installer-paths": {
@@ -56,13 +56,15 @@
         "fix": "vendor/bin/phpcbf",
         "fix:changed": "vendor/bin/phpcbf-changed origin/main",
         "post-update-cmd": [],
-        "unused": "vendor/bin/class-leak check library"
+        "unused": "vendor/bin/class-leak check library",
+        "phpstan": "phpstan analyse --memory-limit=2G"
     },
     "config": {
         "allow-plugins": {
             "composer/installers": true,
             "dealerdirect/phpcodesniffer-composer-installer": true,
-            "php-http/discovery": true
+            "php-http/discovery": true,
+            "phpstan/extension-installer": true
         }
     },
     "require-dev": {
@@ -71,7 +73,10 @@
         "php-mock/php-mock-mockery": "^1.4",
         "php-stubs/wordpress-stubs": "^6.7",
         "dg/bypass-finals": "^1.9",
-        "tomasvotruba/class-leak": "^2.0"
+        "tomasvotruba/class-leak": "^2.0",
+        "phpstan/phpstan": "^2.1",
+        "tomasvotruba/unused-public": "^2.0",
+        "phpstan/extension-installer": "^1.4"
     },
     "autoload": {
         "psr-4": {
@@ -87,5 +92,5 @@
         "helsingborg-stad/component-library": "Required for theme to work properly.",
         "helsingborg-stad/kirki": "Required for theme to work properly."
     },
-    "version": "2.40.0"
+    "version": "5.157.20"
 }

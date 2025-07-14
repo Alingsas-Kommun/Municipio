@@ -5,7 +5,6 @@ const webpack = require('webpack');
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const { CleanWebpackPlugin } = require('clean-webpack-plugin');
 const BrowserSyncPlugin = require('browser-sync-webpack-plugin');
-const autoprefixer = require('autoprefixer');
 const fs = require('fs');
 const { WebpackManifestPlugin } = require('webpack-manifest-plugin');
 
@@ -17,11 +16,12 @@ module.exports = {
         'css/municipio': './assets/source/3.0/sass/main.scss',
         'js/municipio': './assets/source/3.0/js/municipio.js',
         'js/instantpage': './node_modules/instant.page/instantpage.js',
-        'js/mce': './assets/source/3.0/mce-js/mce-buttons.js',
+        'js/mce-buttons': './assets/source/3.0/mce-js/mce-buttons.js',
         'js/mce-table': './assets/source/3.0/mce-js/mce-table.js',
         'css/mce': './assets/source/3.0/sass/mce.scss',
         'css/blockeditor': './assets/source/3.0/sass/blockeditor.scss',
         'js/pdf': './assets/source/3.0/js/pdf.ts',
+        'js/nav': './assets/source/3.0/js/nav.ts',
 
         /* Admin js */
         'js/color-picker': './assets/source/3.0/js/admin/colorPicker.js',
@@ -116,16 +116,23 @@ module.exports = {
                 test: /\.(sa|sc|c)ss$/,
                 use: [
                     MiniCssExtractPlugin.loader,
-                    'css-loader',
                     {
-                        loader: 'postcss-loader',
+                        loader: 'css-loader',
                         options: {
-                            postcssOptions: {
-                                plugins: [autoprefixer],
-                            }
-                        },
+                            importLoaders: 2
+                        }
                     },
-                    'sass-loader'
+                    {
+                        loader: 'postcss-loader'
+                    },
+                    {
+                        loader: 'sass-loader',
+                        options: {
+                            sassOptions: {
+                                includePaths: ['node_modules']
+                            }
+                        }
+                    }
                 ],
             },
             {

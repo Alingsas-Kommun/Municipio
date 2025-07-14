@@ -6,7 +6,7 @@
         ])
         @endhero
     @endif
-    @includeWhen(!$placeQuicklinksAfterContent, 'partials.navigation.fixed')
+    @includeWhen($quicklinksPlacement !== 'below_content', 'partials.navigation.fixed')
     <div class="o-container">
         @paper([
             'attributeList' => [
@@ -56,7 +56,7 @@
 
                     @if (!empty($post->bookingLink))
                         @button([
-                            'text' => $lang->bookHere,
+                            'text' => $lang->bookHere ?? 'Book here',
                             'color' => 'primary',
                             'style' => 'filled',
                             'href' => $post->bookingLink,
@@ -70,8 +70,7 @@
         @endpaper
     </div>
 
-    @includeWhen($placeQuicklinksAfterContent, 'partials.navigation.fixed')
-
+    @includeWhen($quicklinksPlacement === 'below_content', 'partials.navigation.fixed')
 @stop
 
 @section('helper-navigation')

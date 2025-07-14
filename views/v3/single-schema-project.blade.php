@@ -14,14 +14,10 @@
                 {{ $post->postTitle }}
             @endtypography
 
-            @if (!empty($status))
-                @typography([
-                    'element' => 'b',
-                ])
-                    {{$status}}
-                @endtypography
-            @endif
-            @progressBar([ 'value' => $progress ]) @endprogressBar
+            @typography([ 'element' => 'b', ])
+                {{$progressLabel}}
+            @endtypography
+            @progressBar([ 'value' => $progressPercentage ]) @endprogressBar
 
         @endslot
     @endhero
@@ -29,7 +25,7 @@
 
 @section('article.title')@stop
 @section('article.content')
-    {!!$post->postContent!!}
+    {!!$post->getSchemaProperty('description')!!}
 @stop
 
 @section('sidebar.right-sidebar.before')

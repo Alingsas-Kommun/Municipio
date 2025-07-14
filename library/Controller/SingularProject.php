@@ -4,6 +4,7 @@ namespace Municipio\Controller;
 
 use Municipio\Integrations\Component\ImageResolver;
 use ComponentLibrary\Integrations\Image\Image as ImageComponentContract;
+use Municipio\Schema\Person;
 
 /**
  * Class SingularJobPosting
@@ -20,14 +21,17 @@ class SingularProject extends \Municipio\Controller\Singular
     {
         parent::init();
 
-        $this->data['progress'] = $this->data['post']->progress ?? null;
-        $this->data['image']    = $this->getImageContractOrUrl($this->data['post']->id ?? null);
+        $this->data['displayFeaturedImage'] = false;
+        $this->data['progressPercentage']   = $this->data['post']->getSchemaProperty('status')?->getProperty('number') ?? 0;
+        $this->data['progressLabel']        = $this->data['post']->getSchemaProperty('status')?->getProperty('name') ?? '';
+        $this->data['image']                = $this->getImageContractOrUrl($this->data['post']->id ?? null);
 
-        $this->data['category']   = $this->implodeProjectTerms($this->getProjectTerm('category'));
-        $this->data['technology'] = $this->implodeProjectTerms($this->getProjectTerm('technology'));
-        $this->data['status']     = $this->implodeProjectTerms($this->getProjectTerm('status'));
-        $this->data['department'] = $this->implodeProjectTerms($this->getProjectTerm('department'));
-        $this->data['budget']     = $this->data['post']->schemaObject['funding']['amount'] ?? null;
+        $this->data['category']   = $this->implodeTerms($this->post->getTerms(['project_meta_category']));
+        $this->data['technology'] = $this->implodeTerms($this->post->getTerms(['project_meta_technology']));
+        $this->data['status']     = $this->implodeTerms($this->post->getTerms(['project_meta_status']));
+        $this->data['department'] = $this->implodeTerms($this->post->getTerms(['project_department']));
+        $this->data['budget']     = $this->post->getSchemaProperty('funding')['amount'] ?? null;
+
 
         $this->appendToLangObject();
         $this->setInformationListData();
@@ -99,12 +103,12 @@ class SingularProject extends \Municipio\Controller\Singular
             ];
         }
 
-        if (!empty($this->data['post']->schemaObject['employee']['alternateName'])) {
+        if (!empty($this->post->getSchemaProperty('employee')['alternateName'])) {
             $this->data['informationList'][] = [
                 'label' => $this->data['lang']->contact,
                 'value' => [
-                    $this->data['post']->schemaObject['employee']['alternateName'],
-                    $this->getEmailLinkFromEmployee($this->data['post']->schemaObject['employee'])
+                    $this->post->getSchemaProperty('employee')['alternateName'],
+                    $this->getEmailLinkFromEmployee($this->post->getSchemaProperty('employee'))
                 ]
             ];
         }
@@ -120,12 +124,12 @@ class SingularProject extends \Municipio\Controller\Singular
     /**
      * Gets an email link from an employee.
      *
-     * @param array $employee
+     * @param Person|null $employee
      * @return string|null
      */
-    private function getEmailLinkFromEmployee(array $employee): ?string
+    private function getEmailLinkFromEmployee(?Person $employee = null): ?string
     {
-        if ($employee['email'] === null) {
+        if ($employee === null || $employee['email'] === null) {
             return null;
         }
 
@@ -135,24 +139,13 @@ class SingularProject extends \Municipio\Controller\Singular
     }
 
     /**
-     * Gets a project term.
+     * Implode WP_terms.
      *
-     * @param string $key
-     * @return array|null
+     * @param \WP_Term[] $terms
+     * @return string
      */
-    private function getProjectTerm(string $key): ?array
+    public function implodeTerms(array $terms): string
     {
-        return isset($this->data['post']->projectTerms[$key]) ? $this->data['post']->projectTerms[$key] : null;
-    }
-
-    /**
-     * Implode project terms.
-     *
-     * @param array|null $termArray
-     * @return string|null
-     */
-    private function implodeProjectTerms(?array $termArray): ?string
-    {
-        return $termArray ? implode(', ', $termArray) : null;
+        return implode(', ', array_map(fn ($term) => $term->name, $terms));
     }
 }

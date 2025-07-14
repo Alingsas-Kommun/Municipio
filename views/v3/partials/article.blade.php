@@ -1,19 +1,29 @@
-<article class="c-article c-article--readable-width s-article u-clearfix" id="article" {!! !empty($postLanguage) ? 'lang="' . $postLanguage . '"' : '' !!}>
+@element([
+    'componentElement' => 'article',
+    'id' => 'article',
+    'attributeList' => array_merge(
+        !empty($postLanguage) ? ['lang' => $postLanguage] : [],
+    ),
+    'classList' => array_merge(
+        (isset($centerContent) && $centerContent) ? ['u-margin__x--auto'] : [],
+        [ 'c-article', 'c-article--readable-width', 's-article', 'u-clearfix' ]
+    ),
+])
 
     <!-- Title -->
     @section('article.title.before')@show
     @section('article.title')
-        @if ($postTitleFiltered || isset($callToActionItems['floating']))
+        @if ((method_exists($post, 'getTitle') ? $post->getTitle() : $post->post_title) || isset($callToActionItems['floating']))
             @group([
                 'justifyContent' => 'space-between'
             ])
-                @if ($postTitleFiltered)
+                @if ((method_exists($post, 'getTitle') ? $post->getTitle() : $post->post_title))
                     @typography([
                         'element' => 'h1', 
                         'variant' => 'h1', 
                         'id' => 'page-title',
                     ])
-                        {!! $postTitleFiltered !!}
+                        {!! (method_exists($post, 'getTitle') ? $post->getTitle() : $post->post_title) !!}
                     @endtypography
                 @endif
                 @if (!empty($callToActionItems['floating']['icon']) && !empty($callToActionItems['floating']['wrapper']))
@@ -29,7 +39,7 @@
 
     <!-- Blog style author signature -->
     @includeWhen(
-        (!$postTypeDetails->hierarchical || $isBlogStyle), 
+        (($postTypeDetails && !$postTypeDetails->hierarchical) || $isBlogStyle),
         'partials.signature',
         array_merge(
             (array) $signature, 
@@ -38,18 +48,15 @@
     )
 
     <!-- Featured image -->
-    @if ($displayFeaturedImage && $featuredImage['src'])
+    @if ($displayFeaturedImage && method_exists($post, 'getImage') && !empty($post->getImage()))
         @section('article.featuredimage.before')@show
-        @if (!empty($featuredImage['src']))
             @image([
-                'src' => $featuredImage['src'],
-                'alt' => $featuredImage['alt'] ?? '',
+                'src' => $post->getImage(),
                 'caption' => $featuredImage['caption'],
                 'removeCaption' => !$displayFeaturedImageCaption,
-                'classList' => ['c-article__feature-image', 'u-box-shadow--1']
+                'classList' => ['c-article__feature-image', 'u-box-shadow--1', 'u-margin__top--2'],
             ])
             @endimage
-        @endif
         @section('article.featuredimage.after')@show
     @endif
 
@@ -71,7 +78,7 @@
         @endnotice
     @endif
     @section('article.content')
-        {!! $postContentFiltered !!}
+        {!! method_exists($post, 'getContent') ? $post->getContent() : $post->post_content !!}
     @show
     @section('article.content.after')@show
 
@@ -88,7 +95,7 @@
     <!-- Blog style author signature -->
     @section('content.below')
         @includeWhen(
-            ($postTypeDetails->hierarchical && !$isBlogStyle), 
+            (($postTypeDetails && $postTypeDetails->hierarchical) && !$isBlogStyle),
             'partials.signature',
             array_merge(
                 (array) $signature, 
@@ -97,4 +104,4 @@
         )
     @endsection
 
-</article>
+@endelement

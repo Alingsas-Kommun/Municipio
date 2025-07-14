@@ -54,13 +54,16 @@
 
     @includeIf('partials.sidebar', ['id' => 'content-area', 'classes' => ['o-grid']])
 
-    @includeWhen($displayQuicklinksAfterContent, 'partials.navigation.fixed')
+    @includeWhen($quicklinksPlacement === 'below_content', 'partials.navigation.fixed')
 
     {!! $hook->loopEnd !!}
 
 @stop
 
 @section('sidebar-right')
+
+@include('partials.navigation.toc')
+
 @if ($showSidebars)
     @if ($customizer->secondaryNavigationPosition == 'right')
         @if (!empty($secondaryMenu['items']))

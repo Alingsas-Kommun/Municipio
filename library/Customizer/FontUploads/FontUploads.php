@@ -20,10 +20,18 @@ class FontUploads implements Hookable
         'woff2' => 'application/font-woff2',
     );
 
+    /**
+     * Constructor
+     *
+     * @param WpService $wpService
+     */
     public function __construct(private WpService $wpService)
     {
     }
 
+    /**
+     * @inheritDoc
+     */
     public function addHooks(): void
     {
         $this->wpService->addFilter('upload_mimes', array($this, 'addFontMimes'), 1, 1);
@@ -56,7 +64,10 @@ class FontUploads implements Hookable
             if ($url = $this->wpService->wpGetAttachmentUrl($font->ID)) {
                 $fonts[$font->post_name] = [
                     'name' => $font->post_title ?? __('Untitled Font', 'municipio'),
-                    'type' => $this->wpService->wpCheckFiletype($url)['ext'] ?? null,
+                    'type' => $this->wpService->wpCheckFiletypeAndExt(
+                        $url,
+                        basename($url),
+                    )['ext'] ?: pathinfo(basename($url), PATHINFO_EXTENSION),
                     'url'  => str_replace($this->wpService->homeUrl(), '', $url),
                 ];
             }
@@ -104,7 +115,19 @@ class FontUploads implements Hookable
     public function getUploadedFontsCss(): void
     {
         foreach (self::getUploadedFonts() as $font) {
-            echo $this->wpService->wpStripAllTags("@font-face{font-display:swap;font-family:\"{$font['name']}\";src:url(\"{$font['url']}\");format(\"{$font['type']}\");}");
+            $fontFaceRule = sprintf(
+                '@font-face { 
+                    font-display: swap; 
+                    font-family: "%s"; 
+                    src: url("%s") format("%s"); 
+                    font-weight: 100 900;
+                }',
+                $font['name'],
+                $font['url'],
+                $font['type'] ?? 'woff'
+            );
+
+            echo $this->wpService->wpStripAllTags($fontFaceRule);
         }
     }
 

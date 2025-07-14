@@ -2,8 +2,9 @@
 
 namespace Municipio\PostObject;
 
+use ComponentLibrary\Integrations\Image\ImageInterface;
 use Municipio\PostObject\Icon\IconInterface;
-use Municipio\PostObject\TermIcon\TermIconInterface;
+use Municipio\Schema\BaseType;
 
 interface PostObjectInterface
 {
@@ -20,6 +21,20 @@ interface PostObjectInterface
      * @return string
      */
     public function getTitle(): string;
+
+    /**
+     * Get the post object content.
+     *
+     * @return string
+     */
+    public function getContent(): string;
+
+    /**
+     * Get an array of headings from the post content.
+     *
+     * @return array The table of contents data.
+     */
+    public function getContentHeadings(): array;
 
     /**
      * Get the post object excerpt.
@@ -86,4 +101,48 @@ interface PostObjectInterface
      * @return string
      */
     public function getArchiveDateFormat(): string;
+
+    /**
+     * Get schema property.
+     *
+     * @param string $property The schema property to get.
+     * @return mixed The value of the schema property. Will return null if the property does not exist.
+     */
+    public function getSchemaProperty(string $property): mixed;
+
+    /**
+     * Get the schema object.
+     *
+     * @return BaseType The schema object.
+     */
+    public function getSchema(): BaseType;
+
+    /**
+     * Get the post object terms.
+     *
+     * @param string[] $taxonomies An array of taxonomy slugs to get terms for.
+     * @return \WP_Term[] An array of WP_Term objects.
+     * @see https://developer.wordpress.org/reference/classes/wp_term/
+     */
+    public function getTerms(array $taxonomies): array;
+
+    /**
+     * Get the post object image.
+     *
+     * This method retrieves the image associated with the post object.
+     *
+     * @param int|null $width The desired width of the image. If null, the original width is used.
+     * @param int|null $height The desired height of the image. If null, the original height is used.
+     *
+     * @return ImageInterface|null The image associated with the post object, or null if not found.
+     */
+    public function getImage(?int $width = null, ?int $height = null): ?ImageInterface;
+
+    /**
+     * Retrieve a value by its key.
+     *
+     * @param string $key The key to retrieve the value for.
+     * @return mixed The value associated with the key, or null if not found.
+     */
+    public function __get(string $key): mixed;
 }

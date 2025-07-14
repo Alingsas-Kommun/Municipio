@@ -7,29 +7,9 @@ use Municipio\Helper\Image;
 use WP_Post;
 use Municipio\Integrations\Component\ImageResolver;
 use ComponentLibrary\Integrations\Image\Image as ImageComponentContract;
-use Municipio\Helper\Term\Term;
-use Municipio\PostObject\Date\ArchiveDateFormatResolver;
-use Municipio\PostObject\Date\ArchiveDateSourceResolver;
-use Municipio\PostObject\Date\CachedArchiveDateFormatResolver;
-use Municipio\PostObject\Decorators\BackwardsCompatiblePostObject;
-use Municipio\PostObject\Decorators\IconResolvingPostObject;
-use Municipio\PostObject\Decorators\PostObjectFromOtherBlog;
-use Municipio\PostObject\Decorators\PostObjectFromWpPost;
-use Municipio\PostObject\Decorators\PostDateTimestamp;
-use Municipio\PostObject\Decorators\PostObjectDateTimestamp;
-use Municipio\PostObject\Decorators\PostObjectWithOtherBlogIdFromSwitchedState;
-use Municipio\PostObject\Decorators\PostObjectWithSeoRedirect;
-use Municipio\PostObject\Icon\Resolvers\CachedIconResolver;
-use Municipio\PostObject\Icon\Resolvers\NullIconResolver;
-use Municipio\PostObject\Icon\Resolvers\PostIconResolver;
-use Municipio\PostObject\Icon\Resolvers\TermIconResolver;
-use Municipio\PostObject\PostObject;
+use Municipio\Integrations\Component\ImageFocusResolver;
 use Municipio\PostObject\PostObjectInterface;
-use Municipio\PostObject\Date\CachedArchiveDateSourceResolver;
-use Municipio\PostObject\Date\CachedTimestampResolver;
-use Municipio\PostObject\Date\TimestampResolver;
-use Municipio\PostObject\Decorators\PostObjectArchiveDateFormat;
-use Municipio\PostObject\Decorators\PostObjectArchiveDateTimestamp;
+use Municipio\PostObject\Factory\PostObjectFromWpPostFactoryInterface;
 
 /**
  * Class Post
@@ -39,6 +19,16 @@ class Post
 {
     //Stores cache in runtime
     public static $runtimeCache = [];
+    private static PostObjectFromWpPostFactoryInterface $postObjectFromWpPostFactory;
+
+    /**
+     * Set dependencies
+     */
+    public static function setDependencies(
+        PostObjectFromWpPostFactoryInterface $postObjectFromWpPostFactory
+    ) {
+        self::$postObjectFromWpPostFactory = $postObjectFromWpPostFactory;
+    }
 
     /**
      * Prepare post object before sending to view
@@ -76,7 +66,9 @@ class Post
             $data
         );
 
-        return self::convertWpPostToPostObject($post, $cacheGroup, $cacheKey);
+        self::$runtimeCache[$cacheGroup][$cacheKey] = self::convertWpPostToPostObject($post);
+
+        return self::$runtimeCache[$cacheGroup][$cacheKey];
     }
 
      /**
@@ -122,7 +114,9 @@ class Post
             $data
         );
 
-        return self::convertWpPostToPostObject($post, $cacheGroup, $cacheKey);
+        self::$runtimeCache[$cacheGroup][$cacheKey] = self::convertWpPostToPostObject($post);
+
+        return self::$runtimeCache[$cacheGroup][$cacheKey];
     }
 
     /**
@@ -156,46 +150,11 @@ class Post
      * Prepare post object before sending to view
      *
      * @param WP_Post $post WP_Post object
-     * @param string $cacheGroup Cache group
-     * @param string $cacheKey Cache key
      * @return PostObjectInterface
      */
-    private static function convertWpPostToPostObject(WP_Post $post, string $cacheGroup, string $cacheKey): PostObjectInterface
+    private static function convertWpPostToPostObject(WP_Post $post): PostObjectInterface
     {
-        $camelCasedPost = \Municipio\Helper\FormatObject::camelCase($post);
-        $wpService      = \Municipio\Helper\WpService::get();
-        $acfService     = \Municipio\Helper\AcfService::get();
-
-        $postObject = new PostObjectFromWpPost(new PostObject($wpService), $post, $wpService);
-        $postObject = new PostObjectWithSeoRedirect($postObject, $wpService);
-
-        $archiveDateFormatResolver = new ArchiveDateFormatResolver($postObject, $wpService);
-        $archiveDateFormatResolver = new CachedArchiveDateFormatResolver($postObject, $archiveDateFormatResolver);
-        $postObject                = new PostObjectArchiveDateFormat($postObject, $archiveDateFormatResolver);
-
-        $archiveDateSourceResolver = new ArchiveDateSourceResolver($postObject, $wpService);
-        $archiveDateSourceResolver = new CachedArchiveDateSourceResolver($postObject, $archiveDateSourceResolver);
-        $stringToTimeHelper        = new StringToTime($wpService);
-        $timestampResolver         = new TimestampResolver($postObject, $wpService, $archiveDateSourceResolver, $stringToTimeHelper);
-        $timestampResolver         = new CachedTimestampResolver($postObject, $wpService, $timestampResolver);
-
-        $postObject = new PostObjectArchiveDateTimestamp($postObject, $timestampResolver);
-
-        $iconResolver = new TermIconResolver($postObject, $wpService, new Term($wpService, AcfService::get()), new NullIconResolver());
-        $iconResolver = new PostIconResolver($postObject, $acfService, $iconResolver);
-        $iconResolver = new CachedIconResolver($postObject, $iconResolver);
-
-        $postObject = new IconResolvingPostObject($postObject, $iconResolver);
-
-        if ($wpService->isMultiSite() && $wpService->msIsSwitched()) {
-            $postObject = new PostObjectFromOtherBlog($postObject, $wpService, $wpService->getCurrentBlogId());
-        }
-
-        $postObject = new BackwardsCompatiblePostObject($postObject, $camelCasedPost);
-
-        self::$runtimeCache[$cacheGroup][$cacheKey] = $postObject;
-
-        return $postObject;
+        return self::$postObjectFromWpPostFactory->create($post);
     }
 
     /**
@@ -214,37 +173,6 @@ class Post
             array_merge([], $appendFields) //Ability to add default
         );
 
-        $postObject->quicklinksPlacement           = Navigation::getQuicklinksPlacement($postObject->ID);
-        $postObject->hasQuicklinksAfterFirstBlock  = false;
-        $postObject->displayQuicklinksAfterContent = Navigation::displayQuicklinksAfterContent($postObject->ID);
-
-        if (
-            !empty($postObject->quicklinksPlacement) && $postObject->quicklinksPlacement == 'after_first_block'
-            && has_blocks($postObject->post_content) && isset($data['quicklinksMenu']['items'])
-        ) {
-                $postObject->displayQuicklinksAfterContent = false;
-                // Add quicklinks after first block
-            foreach (parse_blocks($postObject->post_content) as $key => $block) {
-                if (0 == $key) {
-                    $postObject->post_content                 =
-                    render_block($block) .
-                    render_blade_view(
-                        'partials.navigation.fixed-after-block',
-                        [
-                        'quicklinksMenu'      => $data['quicklinksMenu']['items'],
-                        'quicklinksPlacement' => $postObject->quicklinksPlacement,
-                        'customizer'          => $data['customizer'],
-                        'lang'                => $data['lang'],
-                        ]
-                    );
-                    $postObject->hasQuicklinksAfterFirstBlock = true;
-                } else {
-                    $postObject->post_content .= render_block($block);
-                }
-            }
-        } else {
-            $postObject->displayQuicklinksAfterContent = Navigation::displayQuicklinksAfterContent($postObject->ID);
-        }
         // Check if password is required for the post
         $passwordRequired = post_password_required($postObject);
 
@@ -339,7 +267,8 @@ class Post
             $postObject->imageContract = ImageComponentContract::factory(
                 (int) $thumbnailId,
                 [1920, false],
-                new ImageResolver()
+                new ImageResolver(),
+                new ImageFocusResolver(['id' => $thumbnailId])
             );
         }
 
@@ -413,19 +342,9 @@ class Post
             $content = self::replaceBuiltinClasses(self::removeEmptyPTag($postObject->post_content));
         }
 
-        if ($postObject->hasQuicklinksAfterFirstBlock) {
-            // Temporarily deactivate wpautop from the_content
-            remove_filter('the_content', 'wpautop');
-        }
-
-        // Apply the_content
+        // Apply the_content (will render blocks)
         $excerpt = apply_filters('the_excerpt', $excerpt);
         $content = apply_filters('the_content', $content);
-
-        if ($postObject->hasQuicklinksAfterFirstBlock) {
-            // Add wpautop back to the_content
-            add_filter('the_content', 'wpautop');
-        }
 
         // Build post_content_filtered
         return $excerpt . $content;

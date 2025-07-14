@@ -2,9 +2,10 @@
 
 namespace Municipio\SchemaData\SchemaObjectFromPost;
 
+use Municipio\PostObject\PostObjectInterface;
 use PHPUnit\Framework\TestCase;
-use Spatie\SchemaOrg\BaseType;
-use Spatie\SchemaOrg\Thing;
+use Municipio\Schema\BaseType;
+use Municipio\Schema\Thing;
 use WP_Post;
 
 class SchemaObjectWithNameFromTitleTest extends TestCase
@@ -22,7 +23,7 @@ class SchemaObjectWithNameFromTitleTest extends TestCase
     private function getInner(): SchemaObjectFromPostInterface
     {
         return new class implements SchemaObjectFromPostInterface {
-            public function create(WP_Post $post): BaseType
+            public function create(WP_Post|PostObjectInterface $post): BaseType
             {
                 return new Thing();
             }

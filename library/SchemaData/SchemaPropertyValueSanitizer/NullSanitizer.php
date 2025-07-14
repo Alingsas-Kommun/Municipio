@@ -2,10 +2,18 @@
 
 namespace Municipio\SchemaData\SchemaPropertyValueSanitizer;
 
-class NullSanitizer implements SchemaPropertyValueSanitizer
+/**
+ * NullSanitizer.
+ */
+class NullSanitizer implements SchemaPropertyValueSanitizerInterface
 {
+    /**
+     * @inheritDoc
+     *
+     * @return mixed
+     */
     public function sanitize(mixed $value, array $allowedTypes): mixed
     {
-        return null;
+        return $value;
     }
 }

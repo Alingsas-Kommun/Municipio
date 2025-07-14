@@ -2,11 +2,9 @@
 
 namespace Municipio\Controller;
 
-use Municipio\Helper\Navigation;
-use Municipio\Helper\Archive;
 use Municipio\Helper\WP;
-use WP_Post;
 use Municipio\PostObject\PostObjectInterface;
+use WP_Post;
 
 /**
  * Class Singular
@@ -14,6 +12,8 @@ use Municipio\PostObject\PostObjectInterface;
  */
 class Singular extends \Municipio\Controller\BaseController
 {
+    protected PostObjectInterface $post;
+
     /**
      * @return array|void
      */
@@ -29,16 +29,16 @@ class Singular extends \Municipio\Controller\BaseController
             return $this->data;
         }
 
+        $originalPostData = $this->displayQuicklinksAfterFirstBlock($originalPostData);
+
+        $this->post                = \Municipio\Helper\Post::preparePostObject($originalPostData, $this->data);
         $this->data['post']        = \Municipio\Helper\Post::preparePostObject($originalPostData, $this->data);
         $this->data['isBlogStyle'] = in_array($this->data['post']->postType, ['post', 'nyheter']) ? true : false;
 
-        $this->data['displayFeaturedImage']        = $this->displayFeaturedImageOnSinglePost($this->data['post']->id);
-        $this->data['displayFeaturedImageCaption'] = $this->displayFeaturedImageCaptionOnSinglePost($this->data['post']->id);
-        $this->data['showPageTitleOnOnePage']      = $this->showPageTitleOnOnePage($this->data['post']->id);
-
-        $this->data['quicklinksPlacement']           = $this->data['post']->quicklinksPlacement;
-        $this->data['displayQuicklinksAfterContent'] = $this->data['post']->displayQuicklinksAfterContent;
-        $this->data['featuredImage']                 = $this->getFeaturedImage($this->data['post']->id, [1366, 910]);
+        $this->data['displayFeaturedImage']        = $this->maybeRunInOtherSite(fn() => $this->displayFeaturedImageOnSinglePost($this->post->getId()));
+        $this->data['displayFeaturedImageCaption'] = $this->maybeRunInOtherSite(fn() => $this->displayFeaturedImageCaptionOnSinglePost($this->post->getId()));
+        $this->data['showPageTitleOnOnePage']      = $this->maybeRunInOtherSite(fn() => $this->showPageTitleOnOnePage($this->post->getId()));
+        $this->data['featuredImage']               = $this->maybeRunInOtherSite(fn () => $this->getFeaturedImage($this->post->getId(), [1366, 910]));
 
         //Signature options
         $this->data['signature'] = $this->getSignature(
@@ -89,10 +89,19 @@ class Singular extends \Municipio\Controller\BaseController
         //Get age of post
         $this->data['postAgeNotice'] = $this->getPostAgeNotice($this->data['post']);
 
-        //Position of quicklinks
-        $this->data['placeQuicklinksAfterContent'] = Navigation::displayQuicklinksAfterContent($this->data['post']->id);
-
         return $this->data;
+    }
+
+    /**
+     * Run a callable in the context of the post's site.
+     *
+     * @param callable $callable The callable to run.
+     *
+     * @return mixed The result of the callable.
+     */
+    public function maybeRunInOtherSite(callable $callable): mixed
+    {
+        return $this->siteSwitcher->runInSite($this->post->getBlogId(), $callable);
     }
 
     /**
@@ -141,6 +150,51 @@ class Singular extends \Municipio\Controller\BaseController
     }
 
     /**
+     * Inserts a "Quicklinks" block after the first block in the post content if certain conditions are met.
+     *
+     * @param WP_Post|null $postObject The post object whose content will be modified. Can be null.
+     *
+     * @return WP_Post|null
+     */
+    private function displayQuicklinksAfterFirstBlock(?WP_Post $postObject): ?WP_Post
+    {
+        if (
+            !$postObject ||
+            $this->data['quicklinksPlacement'] !== 'after_first_block' ||
+            !$this->wpService->hasBlocks($postObject->post_content) ||
+            empty($this->data['quicklinksMenu']['items'])
+        ) {
+            return $postObject;
+        }
+
+        $blocks = $this->wpService->parseBlocks($postObject->post_content);
+
+        $html = render_blade_view(
+            'partials.navigation.fixed-after-block',
+            [
+                'quicklinksMenu'      => $this->data['quicklinksMenu'],
+                'quicklinksPlacement' => $this->data['quicklinksPlacement'],
+                'customizer'          => $this->data['customizer'],
+                'lang'                => $this->data['lang'],
+                'isFrontPage'         => $this->data['isFrontPage'],
+            ]
+        );
+
+        $quicklinksBlock = [
+            'blockName'    => 'core/html',
+            'attrs'        => ["name" => "quicklinks"],
+            'innerHTML'    => $html,
+            'innerContent' => [$html],
+            'innerBlocks'  => [],
+        ];
+
+        array_splice($blocks, 1, 0, [$quicklinksBlock]);
+        $postObject->post_content = $this->wpService->serializeBlocks($blocks);
+
+        return $postObject;
+    }
+
+    /**
      * @return mixed
      */
     public function getSignature(PostObjectInterface $post): object
@@ -152,14 +206,16 @@ class Singular extends \Municipio\Controller\BaseController
         $displayPublish = in_array($this->data['postType'], (array) $this->acfService->getField('show_date_published', 'option') ?? []);
         $displayUpdated = in_array($this->data['postType'], (array) $this->acfService->getField('show_date_updated', 'option') ?? []);
 
-        return (object) [
-            'avatar'    => ($displayAvatar ? $this->getAuthor($post->getId())->avatar : ""),
-            'role'      => ($displayAuthor ? __("Author", 'municipio') : ""),
-            'name'      => ($displayAuthor ? $this->getAuthor($post->getId())->name : ""),
-            'link'      => ($linkAuthor ? $this->getAuthor($post->getId())->link : ""),
-            'published' => ($displayPublish ? $post->getPublishedTime() : false),
-            'updated'   => ($displayUpdated ? $post->getModifiedTime() : false),
-        ];
+        return $this->maybeRunInOtherSite(function () use ($post, $displayAuthor, $displayAvatar, $linkAuthor, $displayPublish, $displayUpdated) {
+            return (object) [
+                'avatar'    => ($displayAvatar ? $this->getAuthor($post->getId())->avatar : ""),
+                'role'      => ($displayAuthor ? __("Author", 'municipio') : ""),
+                'name'      => ($displayAuthor ? $this->getAuthor($post->getId())->name : ""),
+                'link'      => ($linkAuthor ? $this->getAuthor($post->getId())->link : ""),
+                'published' => ($displayPublish ? $post->getPublishedTime() : false),
+                'updated'   => ($displayUpdated ? $post->getModifiedTime() : false),
+            ];
+        }, []);
     }
 
     /**

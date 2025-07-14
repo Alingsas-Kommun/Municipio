@@ -13,6 +13,10 @@ use Municipio\Controller\Navigation\MenuDirector;
 use Municipio\Helper\Controller as ControllerHelper;
 use Municipio\Helper\Template as TemplateHelper;
 use Municipio\Helper\SiteSwitcher\SiteSwitcher;
+use Municipio\PostObject\Factory\PostObjectFromWpPostFactoryInterface;
+use WP_Post;
+use WP_Post_Type;
+use Municipio\Helper\User\User;
 
 /**
  * Class Template
@@ -38,14 +42,16 @@ class Template
         private WpService $wpService,
         private SchemaDataConfigInterface $schemaDataConfig,
         private MainQueryUserGroupRestriction $mainQueryUserGroupRestriction,
-        private SiteSwitcher $siteSwitcher
+        private SiteSwitcher $siteSwitcher,
+        private PostObjectFromWpPostFactoryInterface $postObjectFromWpPost,
+        private User $userHelper
     ) {
         //Init custom templates & views
         add_action('template_redirect', array($this, 'registerViewPaths'), 10);
         add_action('template_redirect', array($this, 'initCustomTemplates'), 10);
 
         // Initialize blade
-        add_action('template_redirect', array($this, 'initializeBlade'), 15);
+        add_action('template_redirect', array($this, 'initializeBlade'), 12);
 
         //Loads custom controllers and views
         add_action('template_redirect', array($this, 'addTemplateFilters'), 10);
@@ -167,6 +173,20 @@ class Template
             }
         }
 
+        if ($this->isPageForPostType() && !$this->isPageForPostTypePubliclyViewable() && !is_user_logged_in()) {
+            $template = '401';
+        }
+
+        // Restrict access to single posts that belong to a post type with an assigned "page for post type"
+        // if that page is not publicly viewable and the user is not logged in.
+        if (
+            $this->singlePostHasPostTypeThatUsesPageForPostType() &&
+            !$this->isPostTypePubliclyViewable() &&
+            !is_user_logged_in()
+        ) {
+            $template = '401';
+        }
+
         //Do something before controller creation
         do_action_deprecated(
             'Municipio/blade/before_load_controller',
@@ -176,17 +196,20 @@ class Template
         );
 
         // Controller conditions
-        $isSingular                  = fn() => is_singular();
-        $isArchive                   = fn() => is_archive() || is_home();
-        $hasSchemaType               = fn() => $this->getCurrentPostSchemaType() !== null;
-        $schemaType                  = fn() => $this->getCurrentPostSchemaType();
-        $templateController          = fn() => ControllerHelper::camelCase($template);
-        $templateControllerPath      = fn() => ControllerHelper::locateController($templateController());
-        $templateControllerNamespace = fn() => ControllerHelper::getNamespace($templateControllerPath()) . '\\';
-        $shouldUseSchemaController   = fn() =>  $hasSchemaType() &&
+        $isSingular                       = fn() => is_singular();
+        $isArchive                        = fn() => is_archive() || is_home();
+        $hasSchemaType                    = fn() => $this->getCurrentPostSchemaType() !== null;
+        $schemaType                       = fn() => $this->getCurrentPostSchemaType();
+        $templateController               = fn() => ControllerHelper::camelCase($template);
+        $templateControllerPath           = fn() => ControllerHelper::locateController($templateController());
+        $templateControllerNamespace      = fn() => ControllerHelper::getNamespace($templateControllerPath()) . '\\';
+        $shouldUseSchemaController        = fn() =>  $hasSchemaType() &&
                                                 $isSingular() &&
                                                 class_exists("Municipio\Controller\Singular{$schemaType()}") &&
                                                 (bool)ControllerHelper::locateController("Singular{$schemaType()}");
+        $shouldUseSchemaArchiveController = fn() =>  $isArchive() && $hasSchemaType() &&
+                                                class_exists("Municipio\Controller\Archive{$schemaType()}") &&
+                                                (bool)ControllerHelper::locateController("Archive{$schemaType()}");
 
         $controllers = [
             [
@@ -203,6 +226,11 @@ class Template
                 'condition'       => ('401' === $template),
                 'controllerClass' => \Municipio\Controller\E401::class,
                 'controllerPath'  => ControllerHelper::locateController('E401'),
+            ],
+            [
+                'condition'       => $shouldUseSchemaArchiveController(),
+                'controllerClass' => "Municipio\Controller\Archive{$schemaType()}",
+                'controllerPath'  => ControllerHelper::locateController("Archive{$schemaType()}")
             ],
             [
                 'condition'       => $shouldUseSchemaController(),
@@ -253,13 +281,153 @@ class Template
     }
 
     /**
+     * Determines if the current single post has a post type that uses a "page for post type" assignment.
+     *
+     * @return bool
+     */
+    private function singlePostHasPostTypeThatUsesPageForPostType(): bool
+    {
+        if (!is_singular() || !is_main_query()) {
+            return false;
+        }
+
+        $queriedObject = $this->wpService->getQueriedObject();
+
+        if (!$queriedObject instanceof WP_Post) {
+            return false;
+        }
+
+        return $this->hasPageForPostType($queriedObject->post_type);
+    }
+
+    /**
+     * Checks if the current post type is publicly viewable.
+     *
+     * This method checks if the queried object is a post and if its post type has a page assigned.
+     * If a page is assigned, it checks if that page is publicly viewable.
+     *
+     * @return bool True if the post type is publicly viewable, false otherwise.
+     */
+    private function isPostTypePubliclyViewable(): bool
+    {
+        $queriedObject = $this->wpService->getQueriedObject();
+
+        if (!$queriedObject instanceof WP_Post) {
+            return true;
+        }
+
+        $postType = $queriedObject->post_type;
+
+        if (!post_type_exists($postType)) {
+            return true;
+        }
+
+        $pageForPostTypeId = $this->getPageForPostTypePageIdFromPostType($postType);
+
+        if ($pageForPostTypeId === null) {
+            return true;
+        }
+
+        return is_post_publicly_viewable($pageForPostTypeId);
+    }
+
+    /**
+     * Checks if a page is assigned for the given post type.
+     *
+     * @param string $postType
+     * @return bool
+     */
+    private function hasPageForPostType(string $postType): bool
+    {
+        return $this->getPageForPostTypePageIdFromPostType($postType) !== null;
+    }
+
+    /**
+     * Retrieves the page ID assigned to a post type archive, if any.
+     *
+     * @param string $postType
+     * @return int|null
+     */
+    private function getPageForPostTypePageIdFromPostType(string $postType): ?int
+    {
+        $pageId = get_option('page_for_' . $postType);
+
+        if (is_numeric($pageId) && (int)$pageId > 0) {
+            return (int)$pageId;
+        }
+
+        return null;
+    }
+
+    /**
+     * Check if the current archive is assigned to a page for a post type.
+     *
+     * @return bool
+     */
+    private function isPageForPostType(): bool
+    {
+        return $this->getPageForPostTypePageId() !== null;
+    }
+
+    /**
+     * Check if the page assigned to a post type archive is publicly viewable by the current user.
+     *
+     * @param int|null $pageId The page ID to check. If null, it will attempt to get the page ID for the current post type archive.
+     *
+     * @return bool
+     */
+    private function isPageForPostTypePubliclyViewable(?int $pageId = null): bool
+    {
+        $pageId = $pageId === null ? $this->getPageForPostTypePageId() : $pageId;
+
+        if ($pageId === null) {
+            return true;
+        }
+
+        return is_post_publicly_viewable($pageId);
+    }
+
+    /**
+     * Get the page ID assigned to a post type archive, if any.
+     *
+     * @return int|null The page ID or null if not found.
+     */
+    private function getPageForPostTypePageId(): ?int
+    {
+        if (!is_archive()) {
+            return null;
+        }
+
+        $queriedObject = $this->wpService->getQueriedObject();
+
+        if (
+            !$queriedObject instanceof WP_Post_Type ||
+            !post_type_exists($queriedObject->name)
+        ) {
+            return null;
+        }
+
+        $pageId = get_option('page_for_' . $queriedObject->name);
+
+        return (is_numeric($pageId) && (int)$pageId > 0) ? (int)$pageId : null;
+    }
+
+    /**
      * Get the current post schema type
      *
      * @return string|null The schema type of the current post. Null if not found.
      */
     public function getCurrentPostSchemaType(): ?string
     {
-        return $this->schemaDataConfig->tryGetSchemaTypeFromPostType($this->wpService->getPostType());
+        global $post;
+
+        if (empty($post)) {
+            return null;
+        }
+
+        $schema = $this->postObjectFromWpPost->create($post)->getSchema();
+
+        return $schema->getType() !== 'Thing' ? $schema->getType() : null;
     }
     /**
      * It loads a controller class and returns an instance of it
@@ -282,7 +450,15 @@ class Template
             '3.0',
             'Municipio/blade/afterLoadController'
         );
-        return new $c['controllerClass']($this->menuBuilder, $this->menuDirector, $this->wpService, $this->acfService, $this->siteSwitcher);
+
+        return new $c['controllerClass'](
+            $this->menuBuilder,
+            $this->menuDirector,
+            $this->wpService,
+            $this->acfService,
+            $this->siteSwitcher,
+            $this->userHelper
+        );
     }
     /**
      * @param $view
@@ -290,10 +466,22 @@ class Template
      */
     public function renderView($view, $data = array())
     {
+        // Ensure blade engine is initialized before rendering
+        if ($this->bladeEngine === null) {
+            $this->initializeBlade();
+        }
+        
         try {
             $markup = $this->bladeEngine
                 ->makeView($view, array_merge($data, array('errorMessage' => false)), [], $this->viewPaths)
                 ->render();
+
+            //Hookable filter to get all markup output
+            //Used by WPMUSecurity
+            $this->wpService->applyFilters(
+                'Website/HTML/output',
+                $markup
+            );
 
             // Adds the option to make html more readable and fixes some validation issues (like /> in void elements)
             if (class_exists('tidy') && (!defined('DISABLE_HTML_TIDY') || constant('DISABLE_HTML_TIDY') !== true)) {
@@ -308,10 +496,44 @@ class Template
                     'drop-empty-paras'    => false
                 ], 'utf8');
 
+                // Clean and repair the document
                 $tidy->cleanRepair();
+                $cleanedHtml = (string) $tidy;
+
+                // Minify inline <style> and <script> content
+                $cleanedHtml = preg_replace_callback(
+                    '/<style(?:\s+[^>]*)?>(.*?)<\/style>/is',
+                    function ($matches) {
+                        return '<style>' . $this->minifyCss($matches[1]) . '</style>';
+                    },
+                    $cleanedHtml
+                );
+
+                // Minify inline <script> content
+                $cleanedHtml = preg_replace_callback(
+                    '/<script\b([^>]*)>(.*?)<\/script>/is',
+                    function ($matches) {
+                        return '<script' . $matches[1] . '>' . $this->minifyJs($matches[2]) . '</script>';
+                    },
+                    $cleanedHtml
+                );
+
+                // Drop comments
+                if (!defined('WP_DEBUG') || defined('WP_DEBUG') && constant('WP_DEBUG') !== true) {
+                    $cleanedHtml = preg_replace('/<!--(.|\s)*?-->/', '', $cleanedHtml);
+                }
+
+                // Drop empty id attributes
+                $cleanedHtml = preg_replace('/id=""/', '', $cleanedHtml);
+
+                //Drop attibute that no longer is to spec
+                $cleanedHtml = $this->dropPropertyAttributes([
+                    'style'  => ['type' => 'text/css'],
+                    'script' => ['type' => 'text/javascript'],
+                ], $cleanedHtml);
 
                 //phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
-                echo $tidy;
+                echo $cleanedHtml;
             } else {
                 //phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
                 echo $markup;
@@ -321,6 +543,64 @@ class Template
         }
 
         return false;
+    }
+
+    /**
+     * Minify CSS by removing excessive whitespace
+     *
+     * @param string $css The CSS to minify
+     *
+     * @return string The minified CSS
+     */
+    private function minifyCss(string $css): string
+    {
+        if (defined('MUNIPIO_DISABLE_CSS_MINIFY') && constant('MUNIPIO_DISABLE_CSS_MINIFY') === true) {
+            return $css;
+        }
+        return preg_replace(['/\/\*.*?\*\//s', '/\s+/'], ['', ' '], trim($css));
+    }
+
+    /**
+     * Minify JS by removing excessive whitespace
+     *
+     * @param string $js The JS to minify
+     *
+     * @return string The minified JS
+     */
+    private function minifyJs(string $js): string
+    {
+        if (defined('MUNIPIO_DISABLE_JS_MINIFY') && constant('MUNIPIO_DISABLE_JS_MINIFY') === true) {
+            return $js;
+        }
+
+        $js = preg_replace('/^[ \t]*\/\/.*$/m', '', $js); // Remove single line comments
+        return preg_replace(['/\/\*.*?\*\//s', '/\s+/'], ['', ' '], trim($js)); // Minify
+    }
+
+    /**
+     * Drop attributes from HTML tags
+     *
+     * @param array $dropAttributesConfig The configuration for what attributes to remove
+     * @param string $cleanedHtml The HTML to clean
+     *
+     * @return string The cleaned HTML
+     */
+    private function dropPropertyAttributes(array $dropAttributesConfig, string $cleanedHtml): string
+    {
+        foreach ($dropAttributesConfig as $tag => $attributes) {
+            foreach ($attributes as $attribute => $value) {
+                // Create the pattern to match the attribute with the specified value
+                $pattern = '/<' . $tag . '\s+([^>]*\s*)' . $attribute . '=["\']' . preg_quote($value, '/') . '["\']([^>]*)>/is';
+
+                // Replace the matched tag by removing the specified attribute
+                $cleanedHtml = preg_replace_callback($pattern, function ($matches) use ($tag) {
+                    // Rebuild the tag without the specified attribute
+                    return '<' . $tag . ' ' . $matches[1] . $matches[2] . '>';
+                }, $cleanedHtml);
+            }
+        }
+
+        return $cleanedHtml;
     }
 
     /**
@@ -456,8 +736,13 @@ class Template
      */
     public function initializeBlade()
     {
+        // Prevent multiple initializations
+        if ($this->bladeEngine !== null) {
+            return;
+        }
+        
         $this->viewPaths   = $this->registerViewPaths();
-        $componentLibrary  = new Init([]);
+        $componentLibrary  = new Init($this->viewPaths);
         $this->bladeEngine = $componentLibrary->getEngine();
     }
 

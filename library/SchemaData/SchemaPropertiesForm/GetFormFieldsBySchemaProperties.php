@@ -2,17 +2,30 @@
 
 namespace Municipio\SchemaData\SchemaPropertiesForm;
 
-use Municipio\SchemaData\SchemaPropertiesForm\FormFieldFromSchemaProperty\FormFieldFromSchemaProperty;
+use AcfService\Contracts\GetField;
+use Municipio\SchemaData\SchemaPropertiesForm\FormFieldResolver\FormFieldResolver;
+use Municipio\SchemaData\SchemaPropertiesForm\FormFieldResolver\FormFieldResolverInterface;
 use WpService\Contracts\ApplyFilters;
 
+/**
+ * Class GetFormFieldsBySchemaProperties
+ *
+ * This class is responsible for getting the form fields by schema properties.
+ */
 class GetFormFieldsBySchemaProperties implements GetFormFieldsBySchemaPropertiesInterface
 {
+    /**
+     * GetFormFieldsBySchemaProperties constructor.
+     */
     public function __construct(
         private ApplyFilters $wpService,
-        private FormFieldFromSchemaProperty $formFieldFromSchemaProperty
+        private GetField $acfService,
     ) {
     }
 
+    /**
+     * @inheritDoc
+     */
     public function getFormFieldsBySchemaProperties(string $schemaType, array $schemaProperties): array
     {
         /**
@@ -23,8 +36,8 @@ class GetFormFieldsBySchemaProperties implements GetFormFieldsBySchemaProperties
          */
         $schemaProperties = $this->wpService->applyFilters('Municipio/SchemaData/SchemaProperties', $schemaProperties, $schemaType);
 
-        $fields = array_map(function ($propertyName, $acceptedPropertyTypes) use ($schemaType) {
-            return $this->formFieldFromSchemaProperty->create($schemaType, $propertyName, $acceptedPropertyTypes);
+        $fields = array_map(function ($propertyName, $acceptedPropertyTypes) {
+            return (new FormFieldResolver($this->acfService, $acceptedPropertyTypes, $propertyName))->resolve();
         }, array_keys($schemaProperties), $schemaProperties);
 
         return array_filter($fields, fn($field) => !empty($field['type']));

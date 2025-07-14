@@ -18,7 +18,7 @@ class Enqueue
         if (!defined('ASSETS_DIST_PATH')) {
             define('ASSETS_DIST_PATH', '/assets/dist/');
         }
-
+  
         // Enqueue scripts and styles
         add_action('wp_enqueue_scripts', array($this, 'style'), 5);
         add_action('wp_enqueue_scripts', array($this, 'icons'), 5);
@@ -317,6 +317,9 @@ class Enqueue
         //Load pdf generator
         wp_register_script('pdf-js', self::getAssetWithCacheBust('js/pdf.js'));
         wp_enqueue_script('pdf-js');
+
+        wp_register_script('nav-js', self::getAssetWithCacheBust('js/nav.js'));
+        wp_enqueue_script('nav-js');
     }
 
     /**

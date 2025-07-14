@@ -2,18 +2,16 @@
 
 namespace Municipio\Controller;
 
-use WP_Term;
 use WpService\WpService;
 use AcfService\AcfService;
 use Municipio\Helper\FormatObject;
 use Municipio\Helper\TranslatedLabels;
-use Municipio\Helper\Color;
-// Menu
+use Municipio\Helper\User\User;
 use Municipio\Controller\Navigation\Config\MenuConfig;
 use Municipio\Controller\Navigation\MenuBuilderInterface;
 use Municipio\Controller\Navigation\MenuDirector;
 use Municipio\Helper\CurrentPostId;
-use Municipio\Helper\SiteSwitcher\SiteSwitcher;
+use Municipio\Helper\SiteSwitcher\SiteSwitcherInterface;
 
 /**
  * This class serves as the base controller for all controllers in the theme.
@@ -62,7 +60,8 @@ class BaseController
         protected MenuDirector $menuDirector,
         protected WpService $wpService,
         protected AcfService $acfService,
-        protected SiteSwitcher $siteSwitcher
+        protected SiteSwitcherInterface $siteSwitcher,
+        protected User $userHelper
     ) {
         //Store globals
         $this->globalToLocal('wp_query', 'wpQuery');
@@ -316,6 +315,7 @@ class BaseController
         $this->data['floatingMenuLabels'] = $this->getFloatingMenuLabels();
         $this->data['quicklinksOptions']  = $this->getQuicklinksOptions();
         $this->data['megaMenuLabels']     = $this->getmegaMenuLabels();
+
         //Get language menu options
         $this->data['languageMenuOptions'] = $this->getLanguageMenuOptions();
 
@@ -344,18 +344,27 @@ class BaseController
         //User role
         $this->data['userRole'] = $this->getUserRole();  //TODO: MOVE TO USER HELPER CLASS
 
+        //User group
+        $this->data['userGroup'] = (
+            $this->wpService->isUserLoggedIn()
+        ) ? (object) [
+            'group'     => $this->userHelper->getUserGroup(),
+            'url'       => $this->userHelper->getUserGroupUrl(),
+            'shortname' => $this->userHelper->getUserGroupShortname()
+        ] : null;
+
         //Show admin notices
         $this->data['showAdminNotices'] = $this->showAdminNotices(); //TODO: MOVE TO USER HELPER CLASS
 
         //Search
-        $this->data['showHeaderSearch']       = $this->showSearchForm('header');
-        $this->data['showNavigationSearch']   = $this->showSearchForm('navigation');
-        $this->data['showQuicklinksSearch']   = $this->showSearchForm('quicklinks');
-        $this->data['showMegaMenuSearch']     = $this->showSearchForm('mega-menu');
-        $this->data['showHeroSearch']         = $this->showSearchForm('hero');
-        $this->data['showMobileSearch']       = $this->showSearchForm('mobile');
-        $this->data['showMobileSearchDrawer'] = $this->showSearchForm('mobile-drawer');
-        $this->data['searchQuery']            = get_search_query();
+        $this->data['showHeaderSearchDesktop'] = $this->showSearchForm('header');
+        $this->data['showHeaderSearchMobile']  = $this->showSearchForm('mobile');
+        $this->data['showNavigationSearch']    = $this->showSearchForm('navigation');
+        $this->data['showQuicklinksSearch']    = $this->showSearchForm('quicklinks');
+        $this->data['showMegaMenuSearch']      = $this->showSearchForm('mega-menu');
+        $this->data['showHeroSearch']          = $this->showSearchForm('hero');
+        $this->data['showMobileSearchDrawer']  = $this->showSearchForm('mobile-drawer');
+        $this->data['searchQuery']             = get_search_query();
 
         // Current posttype
         $this->data['postTypeDetails'] = \Municipio\Helper\PostType::postTypeDetails();
@@ -428,8 +437,11 @@ class BaseController
                 'secondaryLoopEnd'     => $this->hook('secondary_loop_end')
             );
 
-            //Quicklinks placement is set in Singular
-            $this->data['displayQuicklinksAfterContent'] = false;
+            $this->data['quicklinksPlacement'] = $this->wpService->applyFilters(
+                'Municipio/QuickLinksPlacement',
+                $this->acfService->getField('quicklinks_placement', $this->data['pageID']),
+                $this->data['pageID']
+            );
 
             // Add filters to add emblem on blocks and cards with placeholders
             add_filter('ComponentLibrary/Component/Icon/Data', [$this, 'componentDataEmblemFilter'], 10, 1);
@@ -627,9 +639,22 @@ class BaseController
         $options = wp_get_nav_menu_object(get_nav_menu_locations()['language-menu'] ?? '');
 
         $options = [
-        'disclaimer'       => get_field('language_menu_disclaimer', $options),
-        'moreLanguageLink' => get_field('language_menu_more_languages', $options)
+            'disclaimer'             => get_field('language_menu_disclaimer', $options),
+            'moreLanguageLink'       => get_field('language_menu_more_languages', $options),
+            'displayCurrentLanguage' => get_field('display_current_language', $options) ?? false,
+            'currentLanguage'        => null,
         ];
+
+        // IF displayCurrentLanguage is set to true, we will get the current language
+        if ($options['displayCurrentLanguage'] === true) {
+            $locale                     = \get_locale();
+            $getCurrentLang             = fn() => class_exists('Locale')
+                ? (function_exists('mb_ucfirst')
+                    ? mb_ucfirst(\Locale::getDisplayLanguage($locale, $locale))
+                    : ucfirst(\Locale::getDisplayLanguage($locale, $locale)))
+                : $locale;
+            $options['currentLanguage'] = $getCurrentLang();
+        }
 
         return (object) $options;
     }
@@ -772,7 +797,6 @@ class BaseController
                 return is_front_page() && in_array($location, $enabledLocations);
 
             case 'mobile-drawer':
-            case 'mobile':
                 return in_array('mobile', $enabledLocations);
 
             case 'header':
@@ -782,6 +806,13 @@ class BaseController
                 return is_front_page()
                     ? in_array('header', $enabledLocations)
                     : in_array('header_sub', $enabledLocations);
+            case 'mobile':
+                if (is_search()) {
+                    return false;
+                }
+                return is_front_page()
+                    ? in_array('header_mobile', $enabledLocations)
+                    : in_array('header_mobile_sub', $enabledLocations);
 
             case 'navigation':
                 return !is_search() && in_array('mainmenu', $enabledLocations);
